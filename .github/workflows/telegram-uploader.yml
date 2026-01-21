@@ -1,5 +1,5 @@
 # .github/workflows/telegram-uploader.yml
-name: Upload Movie with Side-by-Side
+name: Upload Movie Album
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
         default: 'https://img.downet.net/uploads/U8xQf.webp'
         type: string
       video_url:
-        description: 'رابط الفيديو (سترفع على اليمين)'
+        description: 'رابط الفيديو'
         required: true
         type: string
 
@@ -29,34 +29,21 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 🔍 بدء عملية الرفع
-      run: |
-        echo "========================================"
-        echo "🎬 رفع فيلم مع عرض جانبي"
-        echo "========================================"
-        echo "📸 الصورة: على اليسار"
-        echo "🎥 الفيديو: على اليمين"
-        echo "🎬 الفيلم: ${{ github.event.inputs.content_name }}"
-        echo "========================================"
-    
     - name: ⚙️ تثبيت المتطلبات
       run: |
         sudo apt-get update
         sudo apt-get install -y python3 python3-pip wget
-        
-    - name: 📦 تثبيت Telethon
-      run: |
         pip3 install telethon --quiet
         
-    - name: 📝 إنشاء سكربت الرفع الذكي
+    - name: 📝 إنشاء سكربت الألبوم
       run: |
-        cat > upload_side_by_side.py << 'EOF'
+        cat > upload_album.py << 'EOF'
         import asyncio
         import os
         import sys
         import subprocess
         
-        print("🚀 سكربت الرفع مع عرض جانبي")
+        print("🚀 رفع ألبوم: صورة + فيديو")
         print("=" * 50)
         
         # البيانات
@@ -65,20 +52,18 @@ jobs:
         SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING', '')
         
         INVITE_LINK = os.environ.get('INVITE_LINK', 'https://t.me/+VvLRMffUCXNlNjRk')
-        CONTENT_NAME = os.environ.get('CONTENT_NAME', 'فيلم')
+        CONTENT_NAME = os.environ.get('CONTENT_NAME', 'Truth & Treason 2025')
         IMAGE_URL = os.environ.get('IMAGE_URL', '')
         VIDEO_URL = os.environ.get('VIDEO_URL', '')
         
-        print(f"⚙️  الإعدادات:")
-        print(f"   🎬 الفيلم: {CONTENT_NAME}")
-        print(f"   🔗 رابط الدعوة: {INVITE_LINK}")
-        print("=" * 50)
+        print(f"🎬 الفيلم: {CONTENT_NAME}")
         
         from telethon import TelegramClient
         from telethon.sessions import StringSession
+        from telethon.tl.types import InputMediaUploadedPhoto, InputMediaUploadedDocument
         
         async def main():
-            print("\n🔌 جاري الاتصال...")
+            print("\n🔌 الاتصال...")
             
             client = None
             try:
@@ -94,116 +79,65 @@ jobs:
                 print(f"✅ متصل: @{me.username}")
                 
                 # الوصول للقناة
-                print(f"\n🔗 الانضمام للقناة...")
-                try:
-                    channel = await client.get_entity(INVITE_LINK)
-                    print(f"✅ القناة: {channel.title}")
-                except Exception as e:
-                    print(f"❌ خطأ في القناة: {e}")
-                    return
+                print(f"\n📢 الوصول للقناة...")
+                channel = await client.get_entity(INVITE_LINK)
+                print(f"✅ القناة: {channel.title}")
                 
-                # ⭐ الخطوة 1: إنشاء مجموعة خاصة ⭐
-                print(f"\n👥 جاري إنشاء مجموعة خاصة...")
-                try:
-                    group = await client.create_group(
-                        title=f"🎬 {CONTENT_NAME}",
-                        users=[me.id]  # أضف نفسك فقط
-                    )
-                    print(f"✅ المجموعة: {group.title}")
-                    
-                    # ⭐ الخطوة 2: رفع الصورة في المجموعة ⭐
-                    print(f"\n📸 جاري رفع الصورة في المجموعة...")
-                    
-                    # تنزيل الصورة
-                    subprocess.run([
-                        'wget', '-q', '--show-progress',
-                        '-O', 'poster.jpg',
-                        IMAGE_URL
-                    ], check=True)
-                    
-                    # رفع الصورة
-                    await client.send_file(
-                        group.id,
-                        'poster.jpg',
-                        caption=f'🎬 **{CONTENT_NAME}**\n📸 بوستر الفيلم'
-                    )
-                    print("✅ تم رفع الصورة")
-                    
-                    # ⭐ الخطوة 3: رفع الفيديو في نفس المجموعة ⭐
-                    print(f"\n🎥 جاري رفع الفيديو في المجموعة...")
-                    print("⬇️  جاري تنزيل الفيديو...")
-                    
-                    # تنزيل الفيديو
-                    subprocess.run([
-                        'wget',
-                        '--no-check-certificate',
-                        '-c',
-                        '--timeout=300',
-                        '--tries=5',
-                        '--show-progress',
-                        '-O', 'movie.mp4',
-                        VIDEO_URL
-                    ], check=True)
-                    
-                    # رفع الفيديو مع تتبع التقدم
-                    def progress_callback(current, total):
-                        percent = (current / total) * 100
-                        if int(percent) % 10 == 0:
-                            print(f"📤 رفع: {percent:.1f}%")
-                    
-                    await client.send_file(
-                        group.id,
-                        'movie.mp4',
-                        caption=f'🎥 **{CONTENT_NAME}**\n✅ الفيلم كامل',
-                        progress_callback=progress_callback
-                    )
-                    print("✅ تم رفع الفيديو")
-                    
-                    # ⭐ الخطوة 4: نقل المحتوى للقناة ⭐
-                    print(f"\n📤 جاري نقل المحتوى للقناة...")
-                    
-                    # الحصول على رسائل المجموعة
-                    messages = await client.get_messages(group.id, limit=10)
-                    
-                    # نقل الصورة للقناة
-                    for msg in messages:
-                        if msg.photo:
-                            await client.send_file(
-                                channel.id,
-                                msg.photo,
-                                caption=msg.message
-                            )
-                            print("✅ نقلت الصورة للقناة")
-                            break
-                    
-                    # نقل الفيديو للقناة
-                    for msg in messages:
-                        if msg.video or (msg.document and msg.document.mime_type == 'video/mp4'):
-                            await client.send_file(
-                                channel.id,
-                                msg.video or msg.document,
-                                caption=msg.message
-                            )
-                            print("✅ نقلت الفيديو للقناة")
-                            break
-                    
-                    # ⭐ الخطوة 5: حذف المجموعة ⭐
-                    await client.delete_dialog(group.id)
-                    print("🗑️  تم حذف المجموعة المؤقتة")
-                    
-                except Exception as e:
-                    print(f"❌ خطأ: {e}")
-                    return
+                # تنزيل الملفات
+                print(f"\n⬇️  تنزيل الملفات...")
+                
+                # 1. تنزيل الصورة
+                subprocess.run([
+                    'wget', '-q', '--show-progress',
+                    '-O', 'poster.jpg',
+                    IMAGE_URL
+                ], check=True)
+                print("✅ تم تنزيل الصورة")
+                
+                # 2. تنزيل الفيديو
+                print("⬇️  جاري تنزيل الفيديو...")
+                subprocess.run([
+                    'wget',
+                    '--no-check-certificate',
+                    '-c',
+                    '--timeout=300',
+                    '--tries=3',
+                    '-O', 'movie.mp4',
+                    VIDEO_URL
+                ], check=True)
+                print("✅ تم تنزيل الفيديو")
+                
+                # ⭐⭐ رفع كألبوم ⭐⭐
+                print(f"\n📦 جاري رفع الألبوم...")
+                
+                # رفع الصورة أولاً
+                print("📸 رفع الصورة...")
+                photo_result = await client.upload_file('poster.jpg')
+                
+                # رفع الفيديو
+                print("🎥 رفع الفيديو...")
+                video_result = await client.upload_file('movie.mp4')
+                
+                # ⭐ إنشاء ألبوم ⭐
+                await client.send_file(
+                    channel.id,
+                    file=[
+                        photo_result,  # الصورة أولاً (ستظهر في الأعلى/اليسار حسب التطبيق)
+                        video_result   # الفيديو ثانياً (سيظهر في الأسفل/اليمين)
+                    ],
+                    caption=f'🎬 **{CONTENT_NAME}**\n📸 بوستر | 🎥 فيلم كامل\n✅ تم الرفع'
+                )
                 
                 print("\n" + "=" * 50)
-                print("🎉 تم الرفع بنجاح!")
-                print("📸 الصورة: على اليسار")
-                print("🎥 الفيديو: على اليمين")
+                print("✅ تم رفع الألبوم بنجاح!")
+                print("📸 الصورة: أعلى/يسار")
+                print("🎥 الفيديو: أسفل/يمين")
                 print("=" * 50)
+                
                 return True
                 
             except Exception as e:
-                print(f"💥 خطأ: {e}")
+                print(f"❌ خطأ: {e}")
                 return False
                 
             finally:
@@ -220,8 +154,6 @@ jobs:
             asyncio.run(main())
         EOF
         
-        echo "✅ تم إنشاء السكربت"
-        
     - name: ⚡ تشغيل الرفع
       env:
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
@@ -232,12 +164,5 @@ jobs:
         IMAGE_URL: ${{ github.event.inputs.image_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
       run: |
-        echo "⚡ جاري الرفع..."
-        echo "========================================"
-        python3 upload_side_by_side.py
-        echo "========================================"
-        
-    - name: 📊 النتيجة
-      if: always()
-      run: |
-        echo "✅ العملية اكتملت: $(date)"
+        echo "⚡ جاري رفع الألبوم..."
+        python3 upload_album.py
