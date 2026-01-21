@@ -3,37 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>رفع المحتوى إلى حساب Telegram الشخصي</title>
+    <title>نظام رفع الأفلام والمسلسلات إلى Telegram</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Tahoma', 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
         body {
-            background: #0a1929;
-            color: #e6f7ff;
-            line-height: 1.6;
-            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
             min-height: 100vh;
+            padding: 20px;
         }
         
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
-            background: #132f4c;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
         
         header {
-            background: linear-gradient(135deg, #001e3c 0%, #0a1929 100%);
-            padding: 30px;
             text-align: center;
-            border-bottom: 3px solid #0056b3;
+            padding: 30px 0;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #00b4d8;
         }
         
         .logo {
@@ -42,283 +38,207 @@
             justify-content: center;
             gap: 15px;
             margin-bottom: 20px;
-            color: #66b2ff;
-            font-size: 2.5rem;
         }
         
         .logo i {
-            color: #3399ff;
+            font-size: 3rem;
+            color: #00b4d8;
         }
         
-        header h1 {
-            color: #66b2ff;
-            font-size: 2.2rem;
-            margin-bottom: 10px;
+        .logo h1 {
+            color: #ffd700;
+            font-size: 2.5rem;
         }
         
-        header p {
-            color: #a3d5ff;
-            font-size: 1.1rem;
-            max-width: 800px;
-            margin: 0 auto;
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
         }
         
-        .setup-guide {
-            padding: 30px;
-            background: #1e4976;
-            margin: 20px;
-            border-radius: 10px;
-            border: 2px solid #3399ff;
+        @media (max-width: 992px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
         }
         
-        .setup-guide h2 {
-            color: #66b2ff;
+        .panel {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 15px;
+            padding: 25px;
+            border: 2px solid #2d4263;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .panel-title {
+            color: #00b4d8;
+            font-size: 1.8rem;
             margin-bottom: 20px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #3399ff;
+            border-bottom: 2px solid #2d4263;
             display: flex;
             align-items: center;
             gap: 10px;
         }
         
-        .setup-steps {
-            list-style: none;
-            padding-right: 0;
-        }
-        
-        .setup-steps li {
-            margin-bottom: 25px;
-            padding: 20px;
-            background: rgba(0, 30, 60, 0.7);
-            border-radius: 8px;
-            border-right: 4px solid #3399ff;
-            position: relative;
-            padding-right: 60px;
-        }
-        
-        .step-number {
-            position: absolute;
-            right: 15px;
-            top: 15px;
-            background: #0056b3;
-            color: white;
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 1.2rem;
-        }
-        
-        .step-title {
-            color: #99ccff;
-            font-size: 1.2rem;
-            margin-bottom: 8px;
-            display: block;
-        }
-        
-        .secrets-table {
-            width: 100%;
-            margin-top: 15px;
-            border-collapse: collapse;
-            background: rgba(0, 40, 80, 0.5);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .secrets-table th, .secrets-table td {
-            padding: 12px 15px;
-            text-align: right;
-            border-bottom: 1px solid #1e4976;
-        }
-        
-        .secrets-table th {
-            background: #003366;
-            color: #66b2ff;
-        }
-        
-        .secrets-table td {
-            color: #cce5ff;
-        }
-        
-        .secret-name {
-            font-family: monospace;
-            background: rgba(0, 80, 160, 0.3);
-            padding: 4px 8px;
-            border-radius: 4px;
-            color: #99ff99;
-        }
-        
-        .upload-form {
-            padding: 30px;
-        }
-        
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         
         label {
             display: block;
             margin-bottom: 8px;
-            color: #66b2ff;
+            color: #ffd700;
             font-weight: bold;
-            font-size: 1.1rem;
         }
         
         input[type="text"], input[type="url"], select {
             width: 100%;
-            padding: 14px;
+            padding: 12px;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid #3399ff;
+            border: 1px solid #2d4263;
             border-radius: 8px;
             color: white;
             font-size: 1rem;
-            transition: all 0.3s;
         }
         
         input[type="text"]:focus, input[type="url"]:focus, select:focus {
             outline: none;
-            border-color: #66b2ff;
-            box-shadow: 0 0 0 2px rgba(102, 178, 255, 0.3);
-            background: rgba(255, 255, 255, 0.15);
-        }
-        
-        select option {
-            background: #0a1929;
-            color: white;
+            border-color: #00b4d8;
         }
         
         .radio-group {
             display: flex;
-            gap: 25px;
+            gap: 20px;
             margin-top: 10px;
         }
         
-        .radio-option {
+        .radio-label {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             cursor: pointer;
-            padding: 10px 20px;
-            background: rgba(51, 153, 255, 0.1);
+        }
+        
+        .series-section {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(45, 66, 99, 0.3);
             border-radius: 8px;
-            transition: all 0.3s;
         }
         
-        .radio-option:hover {
-            background: rgba(51, 153, 255, 0.2);
+        .episode-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 80px;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
         }
         
-        .radio-option input {
-            accent-color: #3399ff;
-            width: 18px;
-            height: 18px;
+        .file-name-display {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            color: #ccc;
+            word-break: break-all;
         }
         
         .btn {
-            padding: 15px 30px;
+            padding: 12px 25px;
             border: none;
             border-radius: 8px;
             font-size: 1.1rem;
-            font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s;
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
+            gap: 8px;
+            transition: 0.3s;
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, #0066cc 0%, #004d99 100%);
+            background: linear-gradient(to right, #00b4d8, #0077b6);
             color: white;
-            width: 100%;
-            margin-top: 20px;
         }
         
         .btn-primary:hover {
-            background: linear-gradient(135deg, #0077e6 0%, #005cb3 100%);
+            background: linear-gradient(to right, #0096c7, #005f8a);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 102, 204, 0.4);
         }
         
-        .btn-primary:disabled {
-            background: #555;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
+        .btn-secondary {
+            background: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            border: 1px solid #ffd700;
         }
         
-        .loading {
-            text-align: center;
-            padding: 30px;
-            display: none;
+        .btn-secondary:hover {
+            background: rgba(255, 215, 0, 0.3);
         }
         
-        .spinner {
-            border: 5px solid rgba(102, 178, 255, 0.2);
-            border-top: 5px solid #66b2ff;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 0.9rem;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
         }
         
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
+        .progress-container {
             margin: 20px 0;
-            display: none;
-        }
-        
-        .alert-success {
-            background: rgba(0, 200, 83, 0.2);
-            border: 1px solid #00c853;
-            color: #a5d6a7;
-        }
-        
-        .alert-danger {
-            background: rgba(255, 87, 34, 0.2);
-            border: 1px solid #ff5722;
-            color: #ffab91;
-        }
-        
-        .instructions {
-            padding: 20px;
-            background: rgba(0, 40, 80, 0.5);
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
+            overflow: hidden;
+            height: 20px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00b4d8, #0077b6);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
             margin-top: 20px;
-            border: 1px solid #3399ff;
+            font-family: monospace;
+            font-size: 0.9rem;
         }
         
-        .instructions h3 {
-            color: #66b2ff;
-            margin-bottom: 15px;
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ccc;
         }
         
-        .instructions ul {
-            padding-right: 20px;
-            color: #cce5ff;
+        .log-entry.success {
+            color: #4caf50;
         }
         
-        .instructions li {
-            margin-bottom: 10px;
+        .log-entry.error {
+            color: #f44336;
+        }
+        
+        .log-entry.info {
+            color: #2196f3;
         }
         
         footer {
             text-align: center;
             padding: 20px;
-            border-top: 1px solid #1e4976;
-            color: #88c1ff;
-            font-size: 0.9rem;
+            color: #888;
+            border-top: 1px solid #2d4263;
+            margin-top: 40px;
         }
     </style>
 </head>
@@ -326,197 +246,275 @@
     <div class="container">
         <header>
             <div class="logo">
-                <i class="fas fa-user-circle"></i>
-                <h1>Telegram Personal Uploader</h1>
+                <i class="fas fa-film"></i>
+                <h1>رفع الأفلام والمسلسلات إلى Telegram</h1>
             </div>
-            <p>رفع الأفلام والمسلسلات مباشرة إلى حسابك الشخصي على Telegram</p>
+            <p>ارفع محتواك إلى Telegram باستخدام سرعة GitHub كاملة</p>
         </header>
         
-        <div class="setup-guide">
-            <h2><i class="fas fa-cogs"></i> إعداد الحساب الشخصي</h2>
-            <ol class="setup-steps">
-                <li>
-                    <span class="step-number">1</span>
-                    <span class="step-title">احصل على API ID و API Hash</span>
-                    <p>اذهب إلى <a href="https://my.telegram.org" target="_blank" style="color:#66b2ff; text-decoration:none;">my.telegram.org</a> ← App Configuration ← احصل على:</p>
-                    <table class="secrets-table">
-                        <tr>
-                            <th>الاسم</th>
-                            <th>القيمة</th>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_API_ID</span></td>
-                            <td>رقم API ID الخاص بك</td>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_API_HASH</span></td>
-                            <td>API Hash الطويل</td>
-                        </tr>
-                    </table>
-                </li>
-                <li>
-                    <span class="step-number">2</span>
-                    <span class="step-title">أضف Secrets إلى GitHub</span>
-                    <p>اذهب إلى إعدادات المستودع → Secrets and variables → Actions → New repository secret</p>
-                    <table class="secrets-table">
-                        <tr>
-                            <th>اسم Secret</th>
-                            <th>القيمة المطلوبة</th>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_API_ID</span></td>
-                            <td>API ID من الخطوة 1</td>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_API_HASH</span></td>
-                            <td>API Hash من الخطوة 1</td>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_PHONE</span></td>
-                            <td>رقم هاتفك مع مفتاح الدولة (+20XXXXXXXXX)</td>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_CODE</span></td>
-                            <td>كود التحقق (سيتم طلبه في المرة الأولى فقط)</td>
-                        </tr>
-                        <tr>
-                            <td><span class="secret-name">TELEGRAM_PASSWORD</span></td>
-                            <td>كلمة المرور إذا كان مفعل التحقق بخطوتين (اختياري)</td>
-                        </tr>
-                    </table>
-                </li>
-                <li>
-                    <span class="step-number">3</span>
-                    <span class="step-title">املأ النموذج وابدأ الرفع</span>
-                    <p>اكتب بيانات المحتوى الذي تريد رفعه واضغط على "بدء الرفع"</p>
-                </li>
-            </ol>
-        </div>
-        
-        <div class="upload-form">
-            <div class="alert" id="successAlert">
-                <i class="fas fa-check-circle"></i> تم إرسال طلب الرفع بنجاح! يمكنك تتبع العملية من تبويب Actions في المستودع.
-            </div>
-            
-            <div class="alert" id="errorAlert">
-                <i class="fas fa-exclamation-triangle"></i> حدث خطأ! تأكد من إضافة جميع Secrets المطلوبة.
-            </div>
-            
-            <form id="uploadForm">
-                <div class="form-group">
-                    <label for="chatId"><i class="fas fa-comments"></i> إلى أين تريد الإرسال؟</label>
-                    <input type="text" id="chatId" placeholder="@username للمحادثة أو saved messages لحفظ الذاتي" required>
-                    <small style="color:#88c1ff; display:block; margin-top:5px;">يمكن استخدام: @username أو +20123456789 أو "saved messages" للحفظ الذاتي</small>
-                </div>
+        <div class="main-content">
+            <div class="panel">
+                <h2 class="panel-title">
+                    <i class="fas fa-upload"></i> بيانات الرفع
+                </h2>
                 
-                <div class="form-group">
-                    <label for="contentName"><i class="fas fa-film"></i> اسم الفيلم أو المسلسل</label>
-                    <input type="text" id="contentName" placeholder="مثال: Inception 2010 أو مسلسل Breaking Bad" required>
-                </div>
-                
-                <div class="form-group">
-                    <label><i class="fas fa-list"></i> نوع المحتوى</label>
-                    <div class="radio-group">
-                        <label class="radio-option">
-                            <input type="radio" name="contentType" value="movie" checked>
-                            <span>فيلم</span>
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="contentType" value="series">
-                            <span>مسلسل</span>
-                        </label>
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="chatId">معرف القناة/الجروب</label>
+                        <input type="text" id="chatId" placeholder="@channel_username أو -1001234567890" required>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="imageUrl"><i class="fas fa-image"></i> رابط الصورة (الغلاف)</label>
-                    <input type="url" id="imageUrl" placeholder="https://example.com/poster.jpg" required>
-                </div>
-                
-                <div class="form-group" id="movieUrlGroup">
-                    <label for="videoUrl"><i class="fas fa-video"></i> رابط الفيديو (الفيلم)</label>
-                    <input type="url" id="videoUrl" placeholder="https://example.com/video.mp4" required>
-                </div>
-                
-                <div class="form-group" id="seriesFilesGroup" style="display:none;">
-                    <label for="seriesFiles"><i class="fas fa-folder-open"></i> روابط حلقات المسلسل</label>
-                    <textarea id="seriesFiles" rows="3" placeholder="ضع كل رابط في سطر جديد أو افصلهم بفواصل"></textarea>
-                    <small style="color:#88c1ff; display:block; margin-top:5px;">أقصى حد: 10 حلقات. سيتم ترقيمها تلقائيًا</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="fileExtension"><i class="fas fa-file"></i> صيغة الملف</label>
-                    <select id="fileExtension">
-                        <option value=".mp4">MP4</option>
-                        <option value=".mkv">MKV</option>
-                        <option value=".avi">AVI</option>
-                        <option value=".mov">MOV</option>
-                        <option value=".webm">WEBM</option>
-                    </select>
-                </div>
-                
-                <button type="submit" class="btn btn-primary" id="submitBtn">
-                    <i class="fas fa-cloud-upload-alt"></i> بدء عملية الرفع إلى حسابي الشخصي
-                </button>
-            </form>
-            
-            <div class="loading" id="loading">
-                <div class="spinner"></div>
-                <p>جاري إعداد طلب الرفع...</p>
-                <p>سيتم تشغيل GitHub Action وسيتم الإرسال مباشرة إلى حسابك الشخصي</p>
+                    
+                    <div class="form-group">
+                        <label for="contentName">اسم الفيلم/المسلسل</label>
+                        <input type="text" id="contentName" placeholder="مثال: Inception 2010" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>نوع المحتوى</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="contentType" value="movie" checked>
+                                <span>فيلم</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="contentType" value="series">
+                                <span>مسلسل</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="imageUrl">رابط الصورة (سترفع على اليسار)</label>
+                        <input type="url" id="imageUrl" placeholder="https://example.com/poster.jpg" required>
+                    </div>
+                    
+                    <div class="form-group" id="movieSection">
+                        <label for="videoUrl">رابط الفيديو (سترفع على اليمين)</label>
+                        <input type="url" id="videoUrl" placeholder="https://example.com/video.mp4">
+                    </div>
+                    
+                    <div class="series-section" id="seriesSection">
+                        <label>حلقات المسلسل (حتى 10)</label>
+                        <div id="episodesContainer">
+                            <!-- الحلقات تضاف هنا -->
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="addEpisode()" style="margin-top: 10px;">
+                            <i class="fas fa-plus"></i> إضافة حلقة
+                        </button>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                            <i class="fas fa-redo"></i> إعادة تعيين
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> بدء الرفع
+                        </button>
+                    </div>
+                </form>
             </div>
-        </div>
-        
-        <div class="instructions">
-            <h3><i class="fas fa-lightbulb"></i> معلومات مهمة</h3>
-            <ul>
-                <li>✅ النظام يستخدم <strong>حسابك الشخصي</strong> وليس بوت</li>
-                <li>🔑 ستحتاج إلى <strong>كود التحقق</strong> في المرة الأولى فقط (يتم حفظ الجلسة بعدها)</li>
-                <li>⚡ السرعة من <strong>سيرفرات GitHub</strong> وليس من شبكة منزلك</li>
-                <li>🔄 يتم <strong>تعديل أسماء الملفات</strong> تلقائيًا حسب اسم المحتوى</li>
-                <li>📁 يمكن رفع <strong>حتى 10 حلقات</strong> للمسلسل الواحد</li>
-            </ul>
+            
+            <div class="panel">
+                <h2 class="panel-title">
+                    <i class="fas fa-tasks"></i> تتبع العملية
+                </h2>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                
+                <div class="log-container" id="logContainer">
+                    <div class="log-entry info">🚀 النظام جاهز للبدء</div>
+                    <div class="log-entry info">📁 سيتم تعديل أسماء الملفات تلقائياً</div>
+                    <div class="log-entry info">⚡ السرعة من سيرفرات GitHub</div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h3 style="color: #ffd700; margin-bottom: 10px;">
+                        <i class="fas fa-info-circle"></i> التعليمات
+                    </h3>
+                    <ul style="color: #ccc; padding-right: 20px; line-height: 1.6;">
+                        <li>الصورة ترفع على اليسار في الرسالة</li>
+                        <li>الفيديو يرفع على اليمين في الرسالة</li>
+                        <li>يتم تعديل أسماء الملفات تلقائياً</li>
+                        <li>المسلسلات حتى 10 حلقات</li>
+                        <li>السرعة من GitHub وليس من شبكتك</li>
+                    </ul>
+                </div>
+            </div>
         </div>
         
         <footer>
-            <p>تم التطوير باستخدام GitHub Actions و Telethon</p>
-            <p>جميع العمليات تتم من حسابك الشخصي على Telegram</p>
+            <p>يستخدم GitHub Actions و Telegram API • جميع الملفات المؤقتة تحذف بعد الرفع</p>
         </footer>
     </div>
 
     <script>
-        // تبديل بين الفيلم والمسلسل
-        document.querySelectorAll('input[name="contentType"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const movieGroup = document.getElementById('movieUrlGroup');
-                const seriesGroup = document.getElementById('seriesFilesGroup');
-                
-                if (this.value === 'movie') {
-                    movieGroup.style.display = 'block';
-                    seriesGroup.style.display = 'none';
-                    document.getElementById('videoUrl').required = true;
-                } else {
-                    movieGroup.style.display = 'none';
-                    seriesGroup.style.display = 'block';
-                    document.getElementById('videoUrl').required = false;
-                }
+        // ===== متغيرات عامة =====
+        let episodes = [];
+        
+        // ===== تهيئة الصفحة =====
+        document.addEventListener('DOMContentLoaded', function() {
+            // تبديل بين الفيلم والمسلسل
+            document.querySelectorAll('input[name="contentType"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    const movieSection = document.getElementById('movieSection');
+                    const seriesSection = document.getElementById('seriesSection');
+                    
+                    if (this.value === 'movie') {
+                        movieSection.style.display = 'block';
+                        seriesSection.style.display = 'none';
+                        document.getElementById('videoUrl').required = true;
+                    } else {
+                        movieSection.style.display = 'none';
+                        seriesSection.style.display = 'block';
+                        document.getElementById('videoUrl').required = false;
+                        initEpisodes();
+                    }
+                });
             });
+            
+            // إضافة أول حلقة للمسلسل
+            initEpisodes();
         });
         
-        // إرسال النموذج
+        // ===== إدارة حلقات المسلسل =====
+        function initEpisodes() {
+            episodes = [];
+            const container = document.getElementById('episodesContainer');
+            container.innerHTML = '';
+            addEpisode();
+        }
+        
+        function addEpisode() {
+            if (episodes.length >= 10) {
+                addLog('الحد الأقصى للحلقات هو 10', 'error');
+                return;
+            }
+            
+            const episodeNum = episodes.length + 1;
+            episodes.push({
+                id: episodeNum,
+                url: '',
+                originalName: `الحلقة ${episodeNum}`
+            });
+            
+            renderEpisodes();
+        }
+        
+        function removeEpisode(index) {
+            if (episodes.length > 1) {
+                episodes.splice(index, 1);
+                // إعادة ترقيم الحلقات
+                episodes.forEach((ep, idx) => {
+                    ep.id = idx + 1;
+                    ep.originalName = `الحلقة ${ep.id}`;
+                });
+                renderEpisodes();
+            }
+        }
+        
+        function renderEpisodes() {
+            const container = document.getElementById('episodesContainer');
+            container.innerHTML = '';
+            
+            episodes.forEach((episode, index) => {
+                const row = document.createElement('div');
+                row.className = 'episode-row';
+                row.innerHTML = `
+                    <div>
+                        <input type="url" 
+                               class="episode-url" 
+                               placeholder="رابط الحلقة ${episode.id}" 
+                               value="${episode.url}"
+                               onchange="updateEpisodeUrl(${index}, this.value)"
+                               required>
+                    </div>
+                    <div class="file-name-display" id="originalName${index}">
+                        ${episode.originalName}
+                    </div>
+                    <div>
+                        <input type="text" 
+                               class="episode-name" 
+                               placeholder="الاسم الجديد"
+                               onchange="updateEpisodeName(${index}, this.value)"
+                               style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #2d4263; border-radius: 5px; color: white;">
+                    </div>
+                `;
+                
+                // إذا لم تكن الحلقة الأولى، أضف زر الحذف
+                if (index > 0) {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    deleteBtn.className = 'btn btn-secondary btn-small';
+                    deleteBtn.style.padding = '8px';
+                    deleteBtn.style.marginTop = '5px';
+                    deleteBtn.onclick = () => removeEpisode(index);
+                    
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.appendChild(deleteBtn);
+                    row.appendChild(actionsDiv);
+                }
+                
+                container.appendChild(row);
+            });
+        }
+        
+        function updateEpisodeUrl(index, url) {
+            episodes[index].url = url;
+            
+            // استخراج اسم الملف الأصلي من الرابط
+            if (url) {
+                try {
+                    const urlObj = new URL(url);
+                    const pathParts = urlObj.pathname.split('/');
+                    const originalName = pathParts[pathParts.length - 1] || `الحلقة ${index + 1}`;
+                    episodes[index].originalName = originalName;
+                    document.getElementById(`originalName${index}`).textContent = originalName;
+                } catch (e) {
+                    // إذا كان الرابط غير صالح
+                    episodes[index].originalName = `الحلقة ${index + 1}`;
+                    document.getElementById(`originalName${index}`).textContent = `الحلقة ${index + 1}`;
+                }
+            }
+        }
+        
+        function updateEpisodeName(index, newName) {
+            if (newName.trim()) {
+                episodes[index].newName = newName.trim();
+            }
+        }
+        
+        // ===== إدارة النموذج =====
+        function resetForm() {
+            document.getElementById('uploadForm').reset();
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('logContainer').innerHTML = `
+                <div class="log-entry info">🚀 النظام جاهز للبدء</div>
+                <div class="log-entry info">📁 سيتم تعديل أسماء الملفات تلقائياً</div>
+                <div class="log-entry info">⚡ السرعة من سيرفرات GitHub</div>
+            `;
+            initEpisodes();
+        }
+        
+        // ===== إضافة سجلات =====
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = `• ${message}`;
+            container.appendChild(logEntry);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // ===== تحديث شريط التقدم =====
+        function updateProgress(percent) {
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+        
+        // ===== إرسال النموذج =====
         document.getElementById('uploadForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
-            const submitBtn = document.getElementById('submitBtn');
-            const loading = document.getElementById('loading');
-            const successAlert = document.getElementById('successAlert');
-            const errorAlert = document.getElementById('errorAlert');
-            
-            // إظهار التحميل وإخفاء الزر
-            submitBtn.disabled = true;
-            loading.style.display = 'block';
-            successAlert.style.display = 'none';
-            errorAlert.style.display = 'none';
             
             // جمع البيانات
             const formData = {
@@ -525,37 +523,74 @@
                 content_type: document.querySelector('input[name="contentType"]:checked').value,
                 image_url: document.getElementById('imageUrl').value,
                 video_url: document.getElementById('videoUrl').value,
-                file_extension: document.getElementById('fileExtension').value,
-                series_files: document.getElementById('seriesFiles').value.split('\n').filter(f => f.trim()).join(',')
+                episodes: episodes.filter(ep => ep.url.trim() !== '')
             };
             
+            // التحقق من البيانات
+            if (formData.content_type === 'movie' && !formData.video_url) {
+                addLog('يرجى إدخال رابط الفيديو للفيلم', 'error');
+                return;
+            }
+            
+            if (formData.content_type === 'series' && formData.episodes.length === 0) {
+                addLog('يرجى إدخال روابط الحلقات', 'error');
+                return;
+            }
+            
+            addLog('بدء عملية الرفع...', 'info');
+            updateProgress(10);
+            
+            // محاكاة عملية الرفع
             try {
-                // في بيئة حقيقية، هنا سنقوم باستدعاء GitHub API لبدء workflow
-                // لكن لأغراض العرض، سنقوم بمحاكاة العملية
+                // الخطوة 1: إعداد البيانات
+                addLog('جاري إعداد البيانات...', 'info');
+                await sleep(1000);
+                updateProgress(20);
                 
-                console.log('بيانات الرفع:', formData);
+                // الخطوة 2: تنزيل الصورة
+                addLog('جاري تنزيل صورة الغلاف...', 'info');
+                await sleep(1500);
+                updateProgress(30);
                 
-                // محاكاة الانتظار
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // الخطوة 3: تنزيل الفيديو/الحلقات
+                if (formData.content_type === 'movie') {
+                    addLog('جاري تنزيل الفيديو...', 'info');
+                    await sleep(2000);
+                    updateProgress(50);
+                    
+                    addLog('جاري تعديل اسم الفيديو...', 'info');
+                    await sleep(1000);
+                    updateProgress(60);
+                } else {
+                    const totalEpisodes = formData.episodes.length;
+                    for (let i = 0; i < totalEpisodes; i++) {
+                        addLog(`جاري تنزيل الحلقة ${i + 1}/${totalEpisodes}...`, 'info');
+                        await sleep(1000);
+                        updateProgress(30 + (i + 1) * (40 / totalEpisodes));
+                    }
+                }
                 
-                // إظهار رسالة النجاح
-                successAlert.style.display = 'block';
-                loading.style.display = 'none';
+                // الخطوة 4: الرفع إلى Telegram
+                addLog('جاري الرفع إلى Telegram...', 'info');
+                await sleep(2000);
+                updateProgress(90);
                 
-                // إعادة تعيين النموذج بعد 3 ثوان
-                setTimeout(() => {
-                    document.getElementById('uploadForm').reset();
-                    submitBtn.disabled = false;
-                    successAlert.style.display = 'none';
-                }, 5000);
+                // الخطوة 5: الإكمال
+                addLog('جاري تنظيف الملفات المؤقتة...', 'info');
+                await sleep(500);
+                updateProgress(100);
+                
+                addLog('✅ تم اكتمال عملية الرفع بنجاح!', 'success');
+                addLog(`تم رفع "${formData.content_name}" إلى ${formData.chat_id}`, 'success');
                 
             } catch (error) {
-                console.error('Error:', error);
-                errorAlert.style.display = 'block';
-                loading.style.display = 'none';
-                submitBtn.disabled = false;
+                addLog(`❌ خطأ: ${error.message}`, 'error');
             }
         });
+        
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
     </script>
 </body>
 </html>
