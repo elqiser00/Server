@@ -1,5 +1,5 @@
-# .github/workflows/telegram-fast-upload.yml
-name: Fast Upload via Personal Account
+# .github/workflows/telegram-uploader.yml
+name: Upload Movie - Fixed
 
 on:
   workflow_dispatch:
@@ -27,26 +27,24 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # زيادة المهلة
     
     steps:
-    - name: ⚡ إعداد سريع
+    - name: ⚙️ تثبيت جميع المتطلبات
       run: |
-        echo "⚡ إعداد بيئة سريعة..."
         sudo apt-get update
         sudo apt-get install -y python3 python3-pip wget
-        pip3 install telethon==1.34.0 --quiet
+        pip3 install telethon aiohttp --quiet
+        echo "✅ تم تثبيت جميع المكتبات"
         
-    - name: 📝 سكربت الرفع المباشر
+    - name: 📝 إنشاء سكربت العمل
       run: |
-        cat > direct_upload.py << 'EOF'
+        cat > upload_final.py << 'EOF'
         import asyncio
         import os
         import sys
-        import aiohttp
         import time
         
-        print("⚡ رفع مباشر عبر الحساب الشخصي")
+        print("🚀 رفع فيلم عبر @ELQISEER")
         print("=" * 50)
         
         # البيانات
@@ -66,137 +64,144 @@ jobs:
         from telethon import TelegramClient
         from telethon.sessions import StringSession
         
-        async def download_file(url, filename):
-            """تنزيل ملف باستخدام aiohttp (أسرع)"""
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    with open(filename, 'wb') as f:
-                        while True:
-                            chunk = await response.content.read(8192)
-                            if not chunk:
-                                break
-                            f.write(chunk)
-        
-        async def upload_large_video(client, channel, video_path, caption):
-            """رفع فيديو كبير بخيارات محسنة"""
-            print(f"🎥 بدء رفع الفيديو: {os.path.getsize(video_path)/(1024*1024):.1f} MB")
-            
-            # خيارات محسنة للرفع
-            return await client.send_file(
-                channel,
-                video_path,
-                caption=caption,
-                # ⭐ إعدادات محسنة للسرعة ⭐
-                supports_streaming=True,
-                # ⭐ تقليل جودة الترميز لتسريع الرفع ⭐
-                attributes=[
-                    {
-                        '_': 'DocumentAttributeVideo',
-                        'duration': 0,
-                        'w': 0,
-                        'h': 0,
-                        'round_message': False,
-                        'supports_streaming': True
-                    }
-                ]
-            )
-        
         async def main():
+            print("\n🔌 الاتصال بـ Telegram...")
+            
             client = None
             try:
-                # ⭐ اتصال سريع مع إعدادات محسنة ⭐
+                # اتصال بسيط وسريع
                 client = TelegramClient(
                     StringSession(SESSION_STRING),
                     API_ID,
-                    API_HASH,
-                    # ⭐ إعدادات الاتصال المحسنة ⭐
-                    connection_retries=10,
-                    request_retries=10,
-                    flood_sleep_threshold=120,
-                    auto_reconnect=True
+                    API_HASH
                 )
                 
-                print("🔌 الاتصال بـ Telegram...")
                 await client.connect()
                 
                 if not await client.is_user_authorized():
                     print("❌ جلسة غير صالحة!")
+                    print("🔑 يرجى إنشاء SESSION_STRING جديدة")
                     return False
                 
                 me = await client.get_me()
-                print(f"✅ متصل كـ: @{me.username}")
+                print(f"✅ متصل كـ: {me.first_name} (@{me.username})")
                 
                 # الوصول للقناة
-                print("📢 الوصول للقناة...")
+                print("\n📢 الوصول للقناة...")
                 channel = await client.get_entity(INVITE_LINK)
                 print(f"✅ القناة: {channel.title}")
                 
-                # 1. رفع الصورة أولاً (سريعة)
-                print("\n🖼️ رفع صورة الغلاف...")
-                await download_file(IMAGE_URL, 'poster.jpg')
+                # ⭐ الخطوة 1: رفع الصورة (اختبار أولي)
+                print("\n📸 جاري رفع الصورة...")
+                
+                # تنزيل الصورة باستخدام wget
+                import subprocess
+                subprocess.run(['wget', '-q', '-O', 'poster.jpg', IMAGE_URL], check=True)
                 
                 await client.send_file(
                     channel,
                     'poster.jpg',
-                    caption=f'🎬 {CONTENT_NAME} - 📸 بوستر'
+                    caption=f'🎬 **{CONTENT_NAME}**\n📸 بوستر الفيلم'
                 )
                 print("✅ تم رفع الصورة")
                 
-                # 2. تنزيل الفيديو
-                print("\n⬇️ تنزيل الفيديو...")
-                start_download = time.time()
-                await download_file(VIDEO_URL, 'movie.mp4')
+                # ⭐ الخطوة 2: تنزيل الفيديو
+                print("\n⬇️  تنزيل الفيديو...")
+                print("⏳ قد يستغرق 5-10 دقائق لـ 782 MB")
                 
-                download_time = time.time() - start_download
+                download_start = time.time()
+                result = subprocess.run([
+                    'wget',
+                    '--no-check-certificate',
+                    '-c',
+                    '--timeout=60',
+                    '--tries=3',
+                    '--show-progress',
+                    '-O', 'movie.mp4',
+                    VIDEO_URL
+                ], capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    print(f"❌ خطأ في التنزيل: {result.stderr}")
+                    return False
+                
+                download_time = time.time() - download_start
                 file_size = os.path.getsize('movie.mp4')
                 print(f"✅ تم التنزيل: {file_size/(1024*1024):.1f} MB")
                 print(f"⏱️  وقت التنزيل: {download_time:.1f} ثانية")
-                print(f"🚀 سرعة التنزيل: {file_size/download_time/(1024*1024):.2f} MB/ث")
                 
-                # 3. رفع الفيديو
+                # ⭐ الخطوة 3: رفع الفيديو
                 print("\n🎥 بدء رفع الفيديو إلى Telegram...")
-                print("⚠️  قد يستغرق 20-40 دقيقة لـ 782 MB")
-                print("💡 يرجى الانتظار...")
+                print("⚠️  قد يستغرق 30-60 دقيقة")
+                print("💡 يرجى الانتظار ولا تغلق الصفحة")
                 
                 upload_start = time.time()
+                last_progress = 0
                 
-                # ⭐ استخدام upload_large_video للسرعة ⭐
-                await upload_large_video(
-                    client,
+                def progress_callback(current, total):
+                    nonlocal last_progress
+                    percent = (current / total) * 100
+                    
+                    # تحديث كل 5% فقط لتجنب الإفراط في الطباعة
+                    if int(percent) // 5 > last_progress // 5:
+                        elapsed = time.time() - upload_start
+                        speed = current / elapsed / (1024 * 1024)  # MB/s
+                        
+                        print(f"📤 رفع: {percent:.1f}% | "
+                              f"{current/(1024*1024):.1f} MB | "
+                              f"{speed:.2f} MB/ث | "
+                              f"{elapsed/60:.1f} دقيقة")
+                        last_progress = int(percent)
+                
+                # رفع الفيديو
+                await client.send_file(
                     channel,
                     'movie.mp4',
-                    f'🎥 {CONTENT_NAME}\n'
-                    f'📊 الحجم: {file_size/(1024*1024):.1f} MB\n'
-                    f'✅ الفيلم كامل\n'
-                    f'⚡ تم الرفع عبر @ELQISEER'
+                    caption=f'🎥 **{CONTENT_NAME}**\n'
+                           f'📊 الحجم: {file_size/(1024*1024):.1f} MB\n'
+                           f'✅ الفيلم كامل\n'
+                           f'👤 تم الرفع بواسطة @ELQISEER',
+                    progress_callback=progress_callback,
+                    supports_streaming=True
                 )
                 
                 upload_time = time.time() - upload_start
                 print(f"\n✅ تم رفع الفيديو بنجاح!")
-                print(f"⏱️  وقت الرفع: {upload_time/60:.1f} دقيقة")
-                print(f"🚀 سرعة الرفع: {file_size/upload_time/(1024*1024):.2f} MB/ث")
+                print(f"🎉 اكتمل الرفع في {upload_time/60:.1f} دقيقة")
+                print(f"🚀 متوسط السرعة: {file_size/upload_time/(1024*1024):.2f} MB/ث")
                 
                 return True
                 
             except Exception as e:
-                print(f"❌ خطأ: {type(e).__name__}: {str(e)[:200]}")
+                print(f"\n❌ خطأ: {type(e).__name__}")
+                print(f"📝 التفاصيل: {str(e)[:200]}")
+                
+                # عرض خطأ مفصل
+                import traceback
+                traceback.print_exc()
+                
                 return False
+                
             finally:
-                # تنظيف
+                # تنظيف الملفات
                 for file in ['poster.jpg', 'movie.mp4']:
                     if os.path.exists(file):
                         os.remove(file)
+                        print(f"🗑️  تم حذف {file}")
                 
                 if client:
                     await client.disconnect()
                     print("\n🔒 تم قطع الاتصال")
         
-        # ⭐ زيادة مهلة asyncio ⭐
+        # تشغيل الدالة الرئيسية
         if __name__ == "__main__":
-            asyncio.run(main(), debug=True)
+            success = asyncio.run(main())
+            sys.exit(0 if success else 1)
         EOF
         
-    - name: ⚡ تشغيل الرفع السريع
+        echo "✅ تم إنشاء السكربت"
+        
+    - name: ⚡ تشغيل الرفع
       env:
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -206,13 +211,14 @@ jobs:
         IMAGE_URL: ${{ github.event.inputs.image_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
       run: |
-        echo "⚡ جاري الرفع عبر @ELQISEER..."
+        echo "⚡ بدء عملية الرفع..."
         echo "========================================"
-        python3 direct_upload.py
+        python3 upload_final.py
         echo "========================================"
         
-    - name: 📊 نتيجة الرفع
+    - name: 📊 النتيجة النهائية
       if: always()
       run: |
-        echo "⏰ وقت الانتهاء: $(date)"
-        echo "📈 الحالة: ${{ job.status }}"
+        echo "⏰ وقت الانتهاء: $(date '+%H:%M:%S')"
+        echo "🏁 الحالة: ${{ job.status }}"
+        echo "========================================"
