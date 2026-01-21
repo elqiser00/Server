@@ -1,5 +1,3 @@
-# .github/workflows/telegram-uploader.yml
-
 name: Telegram Personal Uploader
 
 on:
@@ -25,157 +23,119 @@ on:
         required: true
         type: string
       video_url:
-        description: 'رابط الفيديو (للفيلم فقط)'
+        description: 'رابط الفيديو'
         required: false
         type: string
-      episodes:
-        description: 'روابط الحلقات (مفصولة بفواصل للمسلسل)'
+      series_files:
+        description: 'روابط الحلقات (مفصولة بفواصل)'
         required: false
         type: string
 
 jobs:
-  upload:
+  upload-to-telegram:
     runs-on: ubuntu-latest
     
     steps:
     - name: بدء العملية
       run: |
         echo "🚀 بدء عملية رفع المحتوى إلى Telegram"
-        echo "📝 المحتوى: ${{ github.event.inputs.content_name }}"
+        echo "📝 اسم المحتوى: ${{ github.event.inputs.content_name }}"
         echo "🎬 النوع: ${{ github.event.inputs.content_type }}"
-        echo "⏰ الوقت: $(date)"
+        echo "⏰ وقت البدء: $(date)"
         
     - name: تثبيت المتطلبات
       run: |
-        apt-get update
-        apt-get install -y \
+        sudo apt-get update
+        sudo apt-get install -y \
           wget \
           ffmpeg \
           python3 \
           python3-pip \
           curl
         
-        pip3 install telethon requests
+        pip3 install telethon
         
     - name: إنشاء سكربت الرفع
       run: |
-        cat > upload_script.py << 'EOF'
+        cat > uploader.py << 'EOF'
         import asyncio
         import os
         import sys
-        import re
         from telethon import TelegramClient
         from telethon.sessions import StringSession
-        import subprocess
         
-        # تحميل البيانات من Secrets
+        # بيانات من Secrets
         API_ID = int(os.environ.get('TELEGRAM_API_ID'))
         API_HASH = os.environ.get('TELEGRAM_API_HASH')
         SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
         
-        # تحميل البيانات من workflow inputs
+        # بيانات من GitHub Actions
         CHAT_ID = os.environ.get('CHAT_ID')
         CONTENT_NAME = os.environ.get('CONTENT_NAME')
         CONTENT_TYPE = os.environ.get('CONTENT_TYPE')
         IMAGE_URL = os.environ.get('IMAGE_URL')
         VIDEO_URL = os.environ.get('VIDEO_URL', '')
-        EPISODES = os.environ.get('EPISODES', '').split(',')
-        
-        def clean_filename(name):
-            """تنظيف اسم الملف من الأحروف غير المسموح بها"""
-            # إزالة الأحروف الخاصة
-            name = re.sub(r'[<>:"/\\|?*]', '', name)
-            # استبدال المسافات المتعددة
-            name = re.sub(r'\s+', ' ', name)
-            return name.strip()
-        
-        def download_file(url, filename):
-            """تنزيل ملف باستخدام wget"""
-            print(f"📥 جاري تنزيل: {filename}")
-            try:
-                cmd = [
-                    'wget',
-                    '--no-check-certificate',
-                    '-c',  # استئناف التحميل
-                    '-O', filename,
-                    url
-                ]
-                
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                if result.returncode == 0:
-                    print(f"✅ تم تنزيل: {filename}")
-                    return True
-                else:
-                    print(f"❌ فشل تنزيل: {filename}")
-                    print(f"خطأ: {result.stderr}")
-                    return False
-            except Exception as e:
-                print(f"❌ خطأ في التنزيل: {e}")
-                return False
+        SERIES_FILES = os.environ.get('SERIES_FILES', '')
         
         async def main():
-            print("=== بدء سكربت الرفع ===")
+            print("=== بدء رفع المحتوى إلى Telegram ===")
             
-            # إنشاء عميل Telegram باستخدام session string
-            client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+            # إنشاء عميل Telegram
+            client = TelegramClient(
+                StringSession(SESSION_STRING),
+                API_ID,
+                API_HASH
+            )
             
             try:
                 # الاتصال
                 await client.connect()
                 print("✅ متصل بـ Telegram")
                 
-                # تنظيف اسم المحتوى
-                clean_content_name = clean_filename(CONTENT_NAME)
-                print(f"📁 اسم المحتوى: {clean_content_name}")
+                # تنزيل ورفع الصورة
+                print("📥 جاري تنزيل الصورة...")
+                os.system(f'wget -O "poster.jpg" "{IMAGE_URL}"')
                 
-                # تنزيل صورة الغلاف
-                image_ext = '.jpg'  # يمكن تغييره حسب الصورة
-                image_filename = f"{clean_content_name}_poster{image_ext}"
+                print("📤 جاري رفع الصورة...")
+                await client.send_file(
+                    CHAT_ID,
+                    'poster.jpg',
+                    caption=f'🎬 {CONTENT_NAME}'
+                )
+                print("✅ تم رفع الصورة")
                 
-                if download_file(IMAGE_URL, image_filename):
-                    # رفع الصورة
-                    print(f"📤 جاري رفع الصورة: {image_filename}")
+                if CONTENT_TYPE == 'movie' and VIDEO_URL:
+                    # فيلم
+                    print("📥 جاري تنزيل الفيديو...")
+                    video_name = f"{CONTENT_NAME}.mp4"
+                    os.system(f'wget -O "{video_name}" "{VIDEO_URL}"')
+                    
+                    print(f"📤 جاري رفع الفيديو: {video_name}")
                     await client.send_file(
                         CHAT_ID,
-                        image_filename,
-                        caption=f"🎬 {CONTENT_NAME}\n✅ تم الرفع عبر GitHub"
+                        video_name,
+                        caption=f'🎥 {CONTENT_NAME}'
                     )
-                    print("✅ تم رفع الصورة")
-                
-                if CONTENT_TYPE == 'movie':
-                    # معالجة الفيلم
-                    if VIDEO_URL:
-                        # تنزيل الفيديو
-                        video_filename = f"{clean_content_name}.mp4"
-                        if download_file(VIDEO_URL, video_filename):
-                            # رفع الفيديو
-                            print(f"📤 جاري رفع الفيديو: {video_filename}")
-                            await client.send_file(
-                                CHAT_ID,
-                                video_filename,
-                                caption=f"🎥 {CONTENT_NAME}\n📁 {video_filename}"
-                            )
-                            print("✅ تم رفع الفيديو")
-                
-                elif CONTENT_TYPE == 'series':
-                    # معالجة المسلسل
-                    episodes_list = [url.strip() for url in EPISODES if url.strip()]
+                    print("✅ تم رفع الفيديو")
                     
-                    for i, episode_url in enumerate(episodes_list, 1):
-                        episode_filename = f"{clean_content_name} - الحلقة {i}.mp4"
-                        
-                        if download_file(episode_url, episode_filename):
-                            # رفع الحلقة
-                            print(f"📤 جاري رفع الحلقة {i}: {episode_filename}")
+                elif CONTENT_TYPE == 'series' and SERIES_FILES:
+                    # مسلسل
+                    files = SERIES_FILES.split(',')
+                    for i, file_url in enumerate(files, 1):
+                        if file_url.strip():
+                            episode_name = f"{CONTENT_NAME} - الحلقة {i}.mp4"
+                            print(f"📥 جاري تنزيل الحلقة {i}...")
+                            os.system(f'wget -O "{episode_name}" "{file_url.strip()}"')
+                            
+                            print(f"📤 جاري رفع الحلقة {i}")
                             await client.send_file(
                                 CHAT_ID,
-                                episode_filename,
-                                caption=f"📺 {CONTENT_NAME} - الحلقة {i}\n📁 {episode_filename}"
+                                episode_name,
+                                caption=f'📺 {CONTENT_NAME} - الحلقة {i}'
                             )
-                            print(f"✅ تم رفع الحلقة {i}")
-                            await asyncio.sleep(1)  # تأخير بين الحلقات
-                
-                print("✅ تم اكتمال عملية الرفع بنجاح!")
+                            await asyncio.sleep(1)
+                    
+                print("✅ تم اكتمال العملية بنجاح!")
                 
             except Exception as e:
                 print(f"❌ خطأ: {e}")
@@ -184,7 +144,7 @@ jobs:
                 await client.disconnect()
                 print("🔌 تم قطع الاتصال")
                 
-                # تنظيف الملفات المؤقتة
+                # تنظيف الملفات
                 print("🧹 جاري تنظيف الملفات المؤقتة...")
                 os.system("rm -f *.mp4 *.jpg *.png")
                 print("✅ تم التنظيف")
@@ -205,11 +165,12 @@ jobs:
         CONTENT_TYPE: ${{ github.event.inputs.content_type }}
         IMAGE_URL: ${{ github.event.inputs.image_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
-        EPISODES: ${{ github.event.inputs.episodes }}
+        SERIES_FILES: ${{ github.event.inputs.series_files }}
       run: |
         echo "⚡ جاري تشغيل سكربت الرفع..."
-        python3 upload_script.py
+        python3 uploader.py
         
-    - name: تسجيل نهاية العملية
+    - name: نهاية العملية
       run: |
         echo "🏁 انتهت العملية في: $(date)"
+        echo "✅ تم رفع ${{ github.event.inputs.content_name }} بنجاح"
