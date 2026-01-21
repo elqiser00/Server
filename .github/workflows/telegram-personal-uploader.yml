@@ -1,13 +1,14 @@
-name: Telegram Movie Uploader - Fixed
+# .github/workflows/telegram-uploader.yml
+name: Telegram Movie Uploader
 
 on:
   workflow_dispatch:
     inputs:
       chat_id:
-        description: 'معرف القناة/الجروب'
+        description: 'معرف القناة/الجروب (ID القناة)'
         required: true
         type: string
-        default: '-1548535280'  # ✅ تم التصحيح: - في البداية
+        default: '1548535280'  # ✅ المعرف الصحيح
       content_name:
         description: 'اسم الفيلم'
         required: true
@@ -22,255 +23,3 @@ on:
         description: 'رابط الفيديو (.mp4 فقط)'
         required: true
         type: string
-
-env:
-  # قيم افتراضية للتحقق
-  TEST_MODE: false
-
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: التحقق من البيانات المدخلة
-      run: |
-        echo "🎬 ========================================"
-        echo "🎬 بدء رفع فيلم إلى Telegram"
-        echo "🎬 ========================================"
-        echo "📝 اسم الفيلم: ${{ github.event.inputs.content_name }}"
-        echo "👥 إلى: ${{ github.event.inputs.chat_id }}"
-        echo "🖼️ الصورة: ${{ github.event.inputs.image_url }}"
-        echo "🎥 الفيديو: ${{ github.event.inputs.video_url }}"
-        echo "⏰ الوقت: $(date)"
-        echo "🎬 ========================================"
-        
-    - name: تثبيت المتطلبات الأساسية
-      run: |
-        echo "🔧 جاري تثبيت المتطلبات..."
-        sudo apt-get update -y
-        sudo apt-get install -y wget python3 python3-pip ffmpeg
-        
-        echo "✅ تم تثبيت المتطلبات الأساسية"
-        
-    - name: تثبيت Telethon
-      run: |
-        echo "🐍 جاري تثبيت Telethon..."
-        pip3 install telethon --quiet
-        echo "✅ تم تثبيت Telethon"
-        
-    - name: إنشاء سكربت الرفع المصحح
-      run: |
-        cat > upload_fixed.py << 'EOF'
-        import asyncio
-        import os
-        import sys
-        import subprocess
-        from telethon import TelegramClient
-        from telethon.sessions import StringSession
-        
-        print("🚀 بدء سكربت الرفع المصحح...")
-        
-        # بيانات من Secrets
-        try:
-            API_ID = int(os.environ.get('TELEGRAM_API_ID', '0'))
-            API_HASH = os.environ.get('TELEGRAM_API_HASH', '')
-            SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING', '')
-            
-            # بيانات من GitHub
-            CHAT_ID = os.environ.get('CHAT_ID', '')
-            CONTENT_NAME = os.environ.get('CONTENT_NAME', '')
-            IMAGE_URL = os.environ.get('IMAGE_URL', '')
-            VIDEO_URL = os.environ.get('VIDEO_URL', '')
-            
-            print(f"✅ تم تحميل البيانات:")
-            print(f"   API_ID: {API_ID}")
-            print(f"   API_HASH: {API_HASH[:10]}...")  # عرض أول 10 أحرف فقط
-            print(f"   SESSION_STRING: {SESSION_STRING[:20]}...")
-            print(f"   CHAT_ID: {CHAT_ID}")
-            print(f"   CONTENT_NAME: {CONTENT_NAME}")
-            print(f"   IMAGE_URL: {IMAGE_URL}")
-            print(f"   VIDEO_URL: {VIDEO_URL}")
-            
-        except Exception as e:
-            print(f"❌ خطأ في تحميل البيانات: {e}")
-            sys.exit(1)
-        
-        def log(message, level='INFO'):
-            print(f'[{level}] {message}', flush=True)
-        
-        def download_file(url, filename, retries=3):
-            """تنزيل ملف مع إعادة المحاولة"""
-            for attempt in range(retries):
-                try:
-                    log(f'محاولة تنزيل {filename} (المحاولة {attempt + 1}/{retries})')
-                    
-                    cmd = [
-                        'wget',
-                        '--no-check-certificate',  # تجاوز SSL
-                        '-c',                      # استئناف التحميل
-                        '--timeout=30',
-                        '--tries=3',
-                        '--user-agent=Mozilla/5.0',
-                        '-O', filename,
-                        url
-                    ]
-                    
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-                    
-                    if result.returncode == 0:
-                        if os.path.exists(filename):
-                            size = os.path.getsize(filename)
-                            log(f'✅ تم تنزيل {filename} ({size:,} بايت)', 'SUCCESS')
-                            return True
-                        else:
-                            log(f'❌ الملف غير موجود بعد التنزيل: {filename}', 'ERROR')
-                    else:
-                        log(f'❌ فشل التنزيل: {result.stderr}', 'ERROR')
-                        
-                except Exception as e:
-                    log(f'❌ خطأ في التنزيل: {e}', 'ERROR')
-                
-                if attempt < retries - 1:
-                    log(f'🔄 إعادة المحاولة بعد 5 ثوان...')
-                    import time
-                    time.sleep(5)
-            
-            return False
-        
-        def clean_filename(name):
-            """تنظيف اسم الملف"""
-            import re
-            # إزالة الأحروف غير المسموح بها
-            name = re.sub(r'[<>:"/\\|?*]', '', name)
-            # استبدال المسافات المتعددة
-            name = re.sub(r'\s+', ' ', name)
-            return name.strip()
-        
-        async def main():
-            log('=== بدء عملية الرفع الرئيسية ===')
-            
-            # تنظيف اسم الفيلم
-            clean_name = clean_filename(CONTENT_NAME)
-            log(f'📁 الاسم بعد التنظيف: {clean_name}')
-            
-            # التحقق من وجود البيانات الأساسية
-            if not all([API_ID, API_HASH, SESSION_STRING]):
-                log('❌ بيانات Telegram غير مكتملة', 'ERROR')
-                sys.exit(1)
-            
-            if not VIDEO_URL:
-                log('❌ رابط الفيديو مطلوب', 'ERROR')
-                sys.exit(1)
-            
-            # إنشاء عميل Telegram
-            try:
-                client = TelegramClient(
-                    StringSession(SESSION_STRING),
-                    API_ID,
-                    API_HASH
-                )
-                
-                await client.connect()
-                log('✅ تم الاتصال بـ Telegram', 'SUCCESS')
-                
-                # التحقق من الاتصال
-                me = await client.get_me()
-                log(f'✅ متصل كـ: {me.first_name} (@{me.username if me.username else "لا يوجد"})', 'SUCCESS')
-                
-            except Exception as e:
-                log(f'❌ خطأ في الاتصال بـ Telegram: {e}', 'ERROR')
-                sys.exit(1)
-            
-            try:
-                # 1. تنزيل الصورة
-                image_filename = f"{clean_name}_poster.jpg"
-                if download_file(IMAGE_URL, image_filename):
-                    log(f'📤 جاري رفع الصورة: {image_filename}')
-                    
-                    # رفع الصورة
-                    await client.send_file(
-                        CHAT_ID,
-                        image_filename,
-                        caption=f'🎬 {CONTENT_NAME}\n📤 تم الرفع عبر GitHub'
-                    )
-                    log('✅ تم رفع الصورة بنجاح', 'SUCCESS')
-                else:
-                    log('❌ فشل تنزيل الصورة', 'ERROR')
-                
-                # 2. تنزيل الفيديو
-                video_filename = f"{clean_name}.mp4"
-                if download_file(VIDEO_URL, video_filename):
-                    log(f'📤 جاري رفع الفيديو: {video_filename}')
-                    
-                    # الحصول على حجم الفيديو
-                    video_size = os.path.getsize(video_filename)
-                    size_mb = video_size / (1024 * 1024)
-                    
-                    # رفع الفيديو
-                    await client.send_file(
-                        CHAT_ID,
-                        video_filename,
-                        caption=f'🎥 {CONTENT_NAME}\n📁 {video_filename}\n📊 الحجم: {size_mb:.2f} MB\n✅ تم الرفع بنجاح'
-                    )
-                    log('✅ تم رفع الفيديو بنجاح', 'SUCCESS')
-                else:
-                    log('❌ فشل تنزيل الفيديو', 'ERROR')
-                
-                log('🎉 تم اكتمال عملية الرفع بنجاح!', 'SUCCESS')
-                
-            except Exception as e:
-                log(f'❌ خطأ أثناء الرفع: {e}', 'ERROR')
-                sys.exit(1)
-                
-            finally:
-                # قطع الاتصال
-                await client.disconnect()
-                log('🔌 تم قطع الاتصال بـ Telegram')
-                
-                # تنظيف الملفات
-                log('🧹 جاري تنظيف الملفات المؤقتة...')
-                try:
-                    files = [f for f in os.listdir('.') if f.endswith(('.mp4', '.jpg', '.jpeg', '.png'))]
-                    for f in files:
-                        os.remove(f)
-                        log(f'🗑️ تم حذف: {f}')
-                except Exception as e:
-                    log(f'⚠️ خطأ في التنظيف: {e}', 'WARNING')
-                
-                log('✅ تم التنظيف', 'SUCCESS')
-        
-        if __name__ == "__main__":
-            asyncio.run(main())
-        EOF
-        
-        echo "📄 تم إنشاء سكربت الرفع المصحح"
-        echo "🔍 جاري فحص السكربت..."
-        python3 -m py_compile upload_fixed.py
-        echo "✅ السكربت صحيح النحو"
-        
-    - name: تشغيل سكربت الرفع
-      env:
-        TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-        TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-        TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
-        CHAT_ID: ${{ github.event.inputs.chat_id }}
-        CONTENT_NAME: ${{ github.event.inputs.content_name }}
-        IMAGE_URL: ${{ github.event.inputs.image_url }}
-        VIDEO_URL: ${{ github.event.inputs.video_url }}
-      run: |
-        echo "⚡ تشغيل سكربت الرفع المصحح..."
-        echo "========================================"
-        python3 upload_fixed.py
-        echo "========================================"
-        
-    - name: عرض نتيجة التنفيذ
-      if: always()
-      run: |
-        echo "📊 ========================================"
-        echo "📊 نتيجة تنفيذ الـ Action"
-        echo "📊 ========================================"
-        echo "🕒 وقت الانتهاء: $(date)"
-        echo "📝 اسم الفيلم: ${{ github.event.inputs.content_name }}"
-        echo "🔗 رابط الفيديو: ${{ github.event.inputs.video_url }}"
-        echo "📊 الحالة: ${{ job.status }}"
-        echo "📊 ========================================"
