@@ -1,27 +1,27 @@
 # .github/workflows/telegram-uploader.yml
-
-name: Telegram Movie Uploader
+name: Upload to Private Channel
 
 on:
   workflow_dispatch:
     inputs:
-      chat_id:
-        description: 'معرف القناة (ID القناة)'
+      # ⭐ استخدم رابط الدعوة بدلاً من ID ⭐
+      invite_link:
+        description: 'رابط دعوة القناة (Invite Link)'
         required: true
+        default: 'https://t.me/+VvLRMffUCXNlNjRk'
         type: string
-        default: '1548535280'
       content_name:
         description: 'اسم الفيلم'
         required: true
-        type: string
         default: 'Truth & Treason 2025'
+        type: string
       image_url:
         description: 'رابط صورة الغلاف'
         required: true
-        type: string
         default: 'https://img.downet.net/uploads/U8xQf.webp'
+        type: string
       video_url:
-        description: 'رابط الفيديو (.mp4 فقط)'
+        description: 'رابط الفيديو (.mp4)'
         required: true
         type: string
 
@@ -30,136 +30,201 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Check inputs
+    - name: 🔍 بدء الرفع للقناة الخاصة
       run: |
         echo "========================================"
-        echo "🎬 Telegram Movie Uploader"
+        echo "🎬 رفع فيلم إلى قناة خاصة"
         echo "========================================"
-        echo "Movie: ${{ github.event.inputs.content_name }}"
-        echo "Chat ID: ${{ github.event.inputs.chat_id }}"
-        echo "Image: ${{ github.event.inputs.image_url }}"
-        echo "Video: ${{ github.event.inputs.video_url }}"
-        echo "Time: $(date)"
+        echo "🔗 رابط الدعوة: ${{ github.event.inputs.invite_link }}"
+        echo "🎬 الفيلم: ${{ github.event.inputs.content_name }}"
         echo "========================================"
     
-    - name: Setup Python
+    - name: ⚙️ تثبيت المتطلبات
       run: |
         sudo apt-get update
         sudo apt-get install -y python3 python3-pip wget
+        pip3 install telethon --quiet
         
-    - name: Install dependencies
+    - name: 📝 إنشاء سكربت رابط الدعوة
       run: |
-        pip3 install telethon
-        
-    - name: Create upload script
-      run: |
-        cat > upload.py << 'EOF'
+        cat > upload_with_invite.py << 'EOF'
         import asyncio
         import os
         import sys
+        import subprocess
         
-        # Get credentials from secrets
-        API_ID = int(os.environ['TELEGRAM_API_ID'])
-        API_HASH = os.environ['TELEGRAM_API_HASH']
-        SESSION_STRING = os.environ['TELEGRAM_SESSION_STRING']
+        print("🚀 رفع ملفات إلى قناة خاصة عبر رابط الدعوة")
+        print("=" * 50)
         
-        # Get inputs from workflow
-        CHAT_ID = int(os.environ['CHAT_ID'])
-        CONTENT_NAME = os.environ['CONTENT_NAME']
-        IMAGE_URL = os.environ['IMAGE_URL']
-        VIDEO_URL = os.environ['VIDEO_URL']
+        # البيانات من Secrets
+        API_ID = int(os.environ.get('TELEGRAM_API_ID', '0'))
+        API_HASH = os.environ.get('TELEGRAM_API_HASH', '')
+        SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING', '')
         
-        print(f"🔧 Configuration:")
-        print(f"  Chat ID: {CHAT_ID}")
-        print(f"  Movie: {CONTENT_NAME}")
-        print(f"  Image: {IMAGE_URL}")
-        print(f"  Video: {VIDEO_URL}")
+        # مدخلات الرفع
+        INVITE_LINK = os.environ.get('INVITE_LINK', 'https://t.me/+VvLRMffUCXNlNjRk')
+        CONTENT_NAME = os.environ.get('CONTENT_NAME', 'فيلم')
+        IMAGE_URL = os.environ.get('IMAGE_URL', '')
+        VIDEO_URL = os.environ.get('VIDEO_URL', '')
+        
+        print(f"⚙️  الإعدادات:")
+        print(f"   🔗 رابط الدعوة: {INVITE_LINK}")
+        print(f"   🎬 الفيلم: {CONTENT_NAME}")
+        print("=" * 50)
         
         from telethon import TelegramClient
         from telethon.sessions import StringSession
-        import subprocess
         
-        async def upload_to_telegram():
-            print("🚀 Starting Telegram upload...")
+        async def main():
+            print("\n🔌 الاتصال بـ Telegram...")
             
-            # Create client
-            client = TelegramClient(
-                StringSession(SESSION_STRING),
-                API_ID,
-                API_HASH
-            )
-            
-            await client.connect()
-            
-            # Check connection
-            me = await client.get_me()
-            print(f"✅ Connected as: {me.first_name}")
-            
+            client = None
             try:
-                # Download image
-                print("📥 Downloading image...")
-                subprocess.run(['wget', '-O', 'poster.jpg', IMAGE_URL], check=True)
-                
-                # Upload image
-                print("📤 Uploading image...")
-                await client.send_file(
-                    CHAT_ID,
-                    'poster.jpg',
-                    caption=f'🎬 {CONTENT_NAME}\n📤 Uploaded via GitHub'
+                # 1. الاتصال بالحساب
+                client = TelegramClient(
+                    StringSession(SESSION_STRING),
+                    API_ID,
+                    API_HASH
                 )
-                print("✅ Image uploaded")
                 
-                # Download video
-                print("📥 Downloading video...")
-                subprocess.run(['wget', '-O', 'movie.mp4', VIDEO_URL], check=True)
+                await client.connect()
                 
-                # Upload video
-                print("📤 Uploading video...")
-                await client.send_file(
-                    CHAT_ID,
-                    'movie.mp4',
-                    caption=f'🎥 {CONTENT_NAME}\n✅ Upload complete'
-                )
-                print("✅ Video uploaded")
+                # 2. التحقق من المصادقة
+                if not await client.is_user_authorized():
+                    print("❌ الحساب غير مصرح به!")
+                    print("📱 يرجى إنشاء SESSION_STRING جديدة")
+                    return
                 
-                print("🎉 Upload completed successfully!")
+                me = await client.get_me()
+                print(f"✅ مصادقة ناجحة: {me.first_name} (@{me.username})")
+                
+                # 3. ⭐ استخدام رابط الدعوة للحصول على القناة ⭐
+                print(f"\n🔗 جاري الانضمام إلى القناة عبر الرابط...")
+                try:
+                    # الانضمام للقناة عبر رابط الدعوة
+                    entity = await client.get_entity(INVITE_LINK)
+                    print(f"✅ تم الوصول للقناة: {entity.title}")
+                    
+                    # تأكد أننا انضممنا للقناة
+                    if not await client.get_participants(entity, limit=1):
+                        print("⚠️  الحساب ليس عضو في القناة!")
+                        print("🔑 تأكد من أن @ELQISEER عضو في القناة")
+                        return
+                        
+                except Exception as e:
+                    print(f"❌ خطأ في الوصول للقناة: {e}")
+                    print("\n💡 الحلول المقترحة:")
+                    print("   1. تأكد أن رابط الدعوة صحيح: https://t.me/+VvLRMffUCXNlNjRk")
+                    print("   2. تأكد أن الحساب @ELQISEER عضو في القناة")
+                    print("   3. جدد رابط الدعوة إذا انتهت صلاحيته")
+                    return
+                
+                # 4. رفع الصورة
+                print(f"\n🖼️  رفع صورة الغلاف...")
+                try:
+                    # تنزيل الصورة
+                    subprocess.run([
+                        'wget', 
+                        '--no-check-certificate',
+                        '-q',
+                        '--show-progress',
+                        '-O', 'poster.jpg',
+                        IMAGE_URL
+                    ], check=True, timeout=30)
+                    
+                    # رفع الصورة
+                    await client.send_file(
+                        entity,
+                        'poster.jpg',
+                        caption=f'🎬 {CONTENT_NAME}\n📸 Poster'
+                    )
+                    print("✅ تم رفع الصورة")
+                    
+                    # تنظيف
+                    if os.path.exists('poster.jpg'):
+                        os.remove('poster.jpg')
+                        
+                except Exception as e:
+                    print(f"⚠️  خطأ في رفع الصورة: {e}")
+                    # نستمر رغم ذلك
+                
+                # 5. رفع الفيديو
+                print(f"\n🎥 رفع الفيديو...")
+                try:
+                    # تنزيل الفيديو
+                    print("⬇️  جاري تنزيل الفيديو...")
+                    subprocess.run([
+                        'wget',
+                        '--no-check-certificate',
+                        '-c',
+                        '--timeout=60',
+                        '--tries=3',
+                        '-O', 'movie.mp4',
+                        VIDEO_URL
+                    ], check=True, timeout=300)
+                    
+                    # رفع الفيديو
+                    await client.send_file(
+                        entity,
+                        'movie.mp4',
+                        caption=f'🎥 {CONTENT_NAME}\n✅ تم الرفع بنجاح'
+                    )
+                    print("✅ تم رفع الفيديو")
+                    
+                    # تنظيف
+                    if os.path.exists('movie.mp4'):
+                        os.remove('movie.mp4')
+                        
+                except Exception as e:
+                    print(f"❌ خطأ في رفع الفيديو: {e}")
+                    return False
+                
+                print("\n" + "=" * 50)
+                print("🎉 تم الرفع بنجاح إلى القناة الخاصة!")
+                print("=" * 50)
+                return True
                 
             except Exception as e:
-                print(f"❌ Error: {e}")
-                raise
-            finally:
-                await client.disconnect()
-                print("🔒 Disconnected from Telegram")
+                print(f"💥 خطأ غير متوقع: {e}")
+                return False
                 
-                # Cleanup
-                if os.path.exists('poster.jpg'):
-                    os.remove('poster.jpg')
-                if os.path.exists('movie.mp4'):
-                    os.remove('movie.mp4')
+            finally:
+                if client:
+                    await client.disconnect()
+                    print("\n🔒 تم قطع الاتصال")
         
+        # التشغيل
         if __name__ == "__main__":
-            asyncio.run(upload_to_telegram())
+            try:
+                success = asyncio.run(main())
+                if success:
+                    sys.exit(0)
+                else:
+                    sys.exit(1)
+            except KeyboardInterrupt:
+                print("\n⏹️  توقف يدوي")
+                sys.exit(1)
         EOF
         
-        echo "📝 Script created"
+        echo "✅ تم إنشاء سكربت رابط الدعوة"
         
-    - name: Run upload
+    - name: ⚡ تشغيل الرفع
       env:
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
-        CHAT_ID: ${{ github.event.inputs.chat_id }}
+        INVITE_LINK: ${{ github.event.inputs.invite_link }}
         CONTENT_NAME: ${{ github.event.inputs.content_name }}
         IMAGE_URL: ${{ github.event.inputs.image_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
       run: |
-        echo "⚡ Running upload script..."
-        python3 upload.py
+        echo "⚡ جاري الرفع إلى القناة الخاصة..."
+        echo "========================================"
+        python3 upload_with_invite.py
+        echo "========================================"
         
-    - name: Upload result
+    - name: 📊 النتيجة
       if: always()
       run: |
-        echo "========================================"
-        echo "📊 Upload completed"
-        echo "Status: ${{ job.status }}"
-        echo "========================================"
+        echo "🕒 وقت الانتهاء: $(date)"
+        echo "📊 الحالة: ${{ job.status }}"
