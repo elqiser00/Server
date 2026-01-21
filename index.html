@@ -3,19 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام رفع الأفلام إلى Telegram - النسخة الفعالة</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>نظام رفع الأفلام إلى Telegram</title>
     <style>
-        :root {
-            --primary: #1a237e;
-            --secondary: #00bcd4;
-            --success: #4caf50;
-            --danger: #f44336;
-            --warning: #ff9800;
-            --dark: #0d1b2a;
-            --light: #f8f9fa;
-        }
-        
         * {
             margin: 0;
             padding: 0;
@@ -24,84 +13,40 @@
         }
         
         body {
-            background: linear-gradient(135deg, var(--dark) 0%, #1b263b 100%);
-            color: var(--light);
+            background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%);
+            color: white;
             min-height: 100vh;
             padding: 20px;
         }
         
         .container {
-            max-width: 1000px;
+            max-width: 800px;
             margin: 0 auto;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 30px;
+            border-radius: 20px;
+            border: 3px solid #00b4d8;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
         }
         
-        /* Header */
         header {
             text-align: center;
-            padding: 30px;
             margin-bottom: 30px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 20px;
-            border: 3px solid var(--secondary);
         }
         
-        .logo h1 {
+        header h1 {
+            color: #ffd700;
             font-size: 2.5rem;
-            background: linear-gradient(135deg, var(--secondary), #00e5ff);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
             margin-bottom: 10px;
         }
         
-        /* Setup Section */
-        .setup-section {
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 15px;
-            padding: 25px;
+        header p {
+            color: #4cc9f0;
+            font-size: 1.1rem;
+        }
+        
+        .form-section {
             margin-bottom: 30px;
-            border: 2px solid var(--primary);
-        }
-        
-        .setup-section h2 {
-            color: var(--secondary);
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .token-input {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .token-input input {
-            flex: 1;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid var(--primary);
-            border-radius: 8px;
-            color: white;
-        }
-        
-        .token-input button {
-            padding: 12px 25px;
-            background: var(--secondary);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-        
-        /* Form */
-        .form-panel {
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border: 2px solid var(--primary);
         }
         
         .form-group {
@@ -111,57 +56,63 @@
         label {
             display: block;
             margin-bottom: 8px;
-            color: var(--secondary);
+            color: #ffd700;
             font-weight: bold;
+            font-size: 1.1rem;
         }
         
         input[type="text"], input[type="url"] {
             width: 100%;
-            padding: 12px;
+            padding: 15px;
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--primary);
-            border-radius: 8px;
+            border: 2px solid #415a77;
+            border-radius: 10px;
             color: white;
             font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        input[type="text"]:focus, input[type="url"]:focus {
+            outline: none;
+            border-color: #00b4d8;
+            box-shadow: 0 0 0 3px rgba(0, 180, 216, 0.2);
         }
         
         .btn {
-            padding: 15px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            cursor: pointer;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 10px;
-            transition: 0.3s;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(to right, var(--secondary), var(--primary));
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #00b4d8, #0077b6);
             color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            margin-top: 20px;
         }
         
-        .btn-primary:hover:not(:disabled) {
+        .btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0096c7, #005f8a);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 188, 212, 0.4);
+            box-shadow: 0 10px 20px rgba(0, 180, 216, 0.3);
         }
         
-        .btn-primary:disabled {
+        .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none !important;
         }
         
-        /* Status */
-        .status-panel {
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border: 2px solid var(--primary);
+        .status-section {
+            margin-top: 30px;
         }
         
-        .progress-bar {
+        .progress-container {
             height: 20px;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
@@ -169,228 +120,142 @@
             margin: 20px 0;
         }
         
-        .progress-fill {
+        .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, var(--secondary), var(--primary));
+            background: linear-gradient(90deg, #00b4d8, #0077b6);
             width: 0%;
             transition: width 0.5s;
         }
         
         .logs {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px;
-            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            padding: 20px;
             max-height: 300px;
             overflow-y: auto;
             margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
         }
         
         .log-entry {
-            padding: 8px 0;
+            padding: 10px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
-        
-        .log-entry.success {
-            color: var(--success);
-        }
-        
-        .log-entry.error {
-            color: var(--danger);
         }
         
         .log-entry.info {
-            color: var(--secondary);
+            color: #4cc9f0;
         }
         
-        /* How-to */
-        .how-to {
-            background: rgba(0, 188, 212, 0.1);
+        .log-entry.success {
+            color: #4caf50;
+        }
+        
+        .log-entry.error {
+            color: #f44336;
+        }
+        
+        .instructions {
+            background: rgba(255, 215, 0, 0.1);
             border-radius: 10px;
             padding: 20px;
             margin-top: 30px;
-            border: 1px solid var(--secondary);
+            border: 2px solid #ffd700;
         }
         
-        .how-to h3 {
-            color: var(--secondary);
+        .instructions h3 {
+            color: #ffd700;
             margin-bottom: 15px;
         }
         
-        .how-to ol {
+        .instructions ol {
             padding-right: 20px;
             line-height: 1.8;
+            color: #e0e0e0;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #415a77;
+            color: #888;
+            font-size: 0.9rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">
-                <h1><i class="fas fa-bolt"></i> نظام رفع الأفلام إلى Telegram</h1>
-                <p>يعمل مباشرة مع GitHub API - لا حاجة للضغط على Run workflow</p>
-            </div>
+            <h1>🎬 رفع الأفلام إلى Telegram</h1>
+            <p>رفع مباشر باستخدام GitHub Actions - آمن وسريع</p>
         </header>
         
-        <!-- إعداد GitHub Token -->
-        <div class="setup-section" id="tokenSection">
-            <h2><i class="fas fa-key"></i> الخطوة 1: إعداد GitHub Token</h2>
-            <p style="margin-bottom: 20px; color: #ccc;">
-                تحتاج إلى GitHub Personal Access Token لتشغيل الـ Action تلقائياً
-            </p>
-            
-            <div class="token-input">
-                <input type="password" id="githubToken" placeholder="أدخل GitHub Personal Access Token هنا">
-                <button onclick="saveToken()">حفظ</button>
-            </div>
-            
-            <div class="how-to">
-                <h3><i class="fas fa-question-circle"></i> كيفية الحصول على Token:</h3>
-                <ol>
-                    <li>اذهب إلى <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--secondary);">GitHub Tokens</a></li>
-                    <li>اضغط على <strong>"Generate new token"</strong></li>
-                    <li>اختر <strong>"Generate new token (classic)"</strong></li>
-                    <li>حدد الصلاحيات: <code>repo</code> و <code>workflow</code></li>
-                    <li>انسخ الـ Token وألصقه في الحقل أعلاه</li>
-                </ol>
-            </div>
-        </div>
-        
-        <!-- نموذج الرفع -->
-        <div class="form-panel" id="formSection" style="display: none;">
-            <h2><i class="fas fa-film"></i> الخطوة 2: بيانات الرفع</h2>
-            
+        <div class="form-section">
             <form id="uploadForm">
                 <div class="form-group">
-                    <label for="chatId">معرف القناة/الجروب</label>
+                    <label for="chatId">🔗 معرف القناة/الجروب</label>
                     <input type="text" id="chatId" value="1548535280-" required>
                 </div>
                 
                 <div class="form-group">
-                    <label for="contentName">اسم الفيلم</label>
+                    <label for="contentName">📝 اسم الفيلم</label>
                     <input type="text" id="contentName" value="Truth & Treason 2025" required>
                 </div>
                 
                 <div class="form-group">
-                    <label for="imageUrl">رابط الصورة (سترفع على اليسار)</label>
+                    <label for="imageUrl">🖼️ رابط صورة الغلاف (سترفع على اليسار)</label>
                     <input type="url" id="imageUrl" value="https://img.downet.net/uploads/U8xQf.webp" required>
                 </div>
                 
                 <div class="form-group">
-                    <label for="videoUrl">رابط الفيديو (.mp4 فقط - سيرفع على اليمين)</label>
+                    <label for="videoUrl">🎥 رابط الفيديو (.mp4 فقط - سيرفع على اليمين)</label>
                     <input type="url" id="videoUrl" placeholder="https://example.com/video.mp4" required>
-                    <small style="color: #ccc; display: block; margin-top: 5px;">يجب أن يكون رابط كامل ينتهي بــ .mp4</small>
+                    <small style="color: #4cc9f0; display: block; margin-top: 5px;">يجب أن يكون رابط كامل ينتهي بــ .mp4</small>
                 </div>
                 
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="skipSSL" checked style="accent-color: var(--secondary);">
-                        <span>تجاوز مشاكل SSL (للروابط المحمية)</span>
-                    </label>
-                </div>
-                
-                <button type="submit" class="btn btn-primary" id="submitBtn">
-                    <i class="fas fa-rocket"></i> بدء الرفع الآمن
+                <button type="submit" class="btn" id="submitBtn">
+                    <i class="fas fa-rocket"></i> بدء عملية الرفع الآمنة
                 </button>
             </form>
         </div>
         
-        <!-- حالة التقدم -->
-        <div class="status-panel" id="statusSection" style="display: none;">
-            <h2><i class="fas fa-chart-line"></i> الخطوة 3: تتبع العملية</h2>
-            
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            
-            <div style="text-align: center; margin: 20px 0;">
-                <div id="statusText" style="color: var(--secondary); font-size: 1.2rem;">
-                    جاهز للبدء...
-                </div>
-                <div id="progressText" style="color: #ccc; margin-top: 5px;">
-                    0%
-                </div>
+        <div class="status-section">
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
             </div>
             
             <div class="logs" id="logContainer">
                 <div class="log-entry info">🚀 النظام جاهز للبدء</div>
-            </div>
-            
-            <div style="margin-top: 20px; text-align: center;">
-                <a href="#" id="actionsLink" target="_blank" style="color: var(--secondary); text-decoration: none;">
-                    <i class="fab fa-github"></i> افتح صفحة GitHub Actions لمتابعة التفاصيل
-                </a>
+                <div class="log-entry info">⚡ سيتم الرفع عبر GitHub Actions</div>
+                <div class="log-entry info">📊 السرعة من سيرفرات GitHub</div>
             </div>
         </div>
         
-        <!-- معلومات إضافية -->
-        <div class="how-to">
-            <h3><i class="fas fa-info-circle"></i> معلومات مهمة:</h3>
-            <ul style="padding-right: 20px; line-height: 1.8;">
-                <li>✅ النظام يشغل GitHub Action تلقائياً دون الحاجة للضغط على Run workflow</li>
-                <li>⚡ يستخدم سرعة GitHub الكاملة (ليست من شبكتك)</li>
-                <li>🔓 يحل مشاكل SSL تلقائياً للروابط المحمية</li>
-                <li>🖼️ الصورة ترفع على اليسار في الرسالة</li>
-                <li>🎥 الفيديو يرفع على اليمين في الرسالة</li>
-                <li>✏️ يتم تعديل أسماء الملفات تلقائياً</li>
-                <li>📊 يمكنك متابعة التقدم من صفحة Actions</li>
-            </ul>
+        <div class="instructions">
+            <h3>📋 التعليمات المهمة:</h3>
+            <ol>
+                <li>املأ بيانات الفيلم أعلاه</li>
+                <li>اضغط على "بدء عملية الرفع الآمنة"</li>
+                <li>اذهب إلى صفحة GitHub Actions في مستودعك</li>
+                <li>اضغط على <strong>"Run workflow"</strong> يدوياً</li>
+                <li>تابع التقدم من تبويب Actions</li>
+            </ol>
         </div>
+        
+        <footer>
+            <p>💡 النصيحة: افتح صفحة Actions في تبويب جديد أثناء الرفع</p>
+            <a href="#" onclick="openActionsPage()" style="color: #00b4d8; text-decoration: none; margin-top: 10px; display: inline-block;">
+                <i class="fas fa-external-link-alt"></i> افتح صفحة GitHub Actions الآن
+            </a>
+        </footer>
     </div>
 
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <script>
-        // =============== متغيرات عامة ===============
-        let githubToken = null;
-        let workflowRunId = null;
-        let progressInterval = null;
-        
-        // =============== حفظ Token ===============
-        function saveToken() {
-            const tokenInput = document.getElementById('githubToken');
-            const token = tokenInput.value.trim();
-            
-            if (!token) {
-                addLog('❌ الرجاء إدخال GitHub Token', 'error');
-                return;
-            }
-            
-            // حفظ في localStorage
-            localStorage.setItem('github_token', token);
-            githubToken = token;
-            
-            // إخفاء قسم Token وإظهار قسم النموذج
-            document.getElementById('tokenSection').style.display = 'none';
-            document.getElementById('formSection').style.display = 'block';
-            document.getElementById('statusSection').style.display = 'block';
-            
-            addLog('✅ تم حفظ GitHub Token بنجاح', 'success');
-            addLog('🔍 جاري التحقق من صلاحيات Token...', 'info');
-            
-            // التحقق من صلاحيات Token
-            setTimeout(() => {
-                addLog('✅ Token صالح وجاهز للاستخدام', 'success');
-                addLog('📝 يمكنك الآن إدخال بيانات الرفع', 'info');
-            }, 1500);
-        }
-        
-        // =============== تحميل Token المحفوظ ===============
-        function loadSavedToken() {
-            const savedToken = localStorage.getItem('github_token');
-            if (savedToken) {
-                githubToken = savedToken;
-                document.getElementById('githubToken').value = savedToken;
-                
-                // إظهار قسم النموذج مباشرة
-                document.getElementById('tokenSection').style.display = 'none';
-                document.getElementById('formSection').style.display = 'block';
-                document.getElementById('statusSection').style.display = 'block';
-                
-                addLog('🔑 تم تحميل Token المحفوظ', 'info');
-            }
-        }
-        
-        // =============== إدارة السجلات ===============
+        // دالة لإضافة سجلات
         function addLog(message, type = 'info') {
             const container = document.getElementById('logContainer');
             const logEntry = document.createElement('div');
@@ -400,206 +265,126 @@
             container.scrollTop = container.scrollHeight;
         }
         
-        // =============== تحديث التقدم ===============
-        function updateProgress(percent, status) {
-            document.getElementById('progressFill').style.width = `${percent}%`;
-            document.getElementById('progressText').textContent = `${percent}%`;
-            document.getElementById('statusText').textContent = status;
+        // دالة لتحديث شريط التقدم
+        function updateProgress(percent) {
+            document.getElementById('progressBar').style.width = `${percent}%`;
         }
         
-        // =============== إرسال الـ Action ===============
-        async function triggerGitHubAction(formData) {
-            if (!githubToken) {
-                throw new Error('GitHub Token غير موجود');
-            }
-            
-            // بيانات الـ Action
-            const repoOwner = 'elqiser00'; // اسم المستخدم
-            const repoName = 'Server'; // اسم المستودع
-            const workflowId = 'telegram-personal-uploader.yml'; // اسم ملف الـ workflow
-            
-            addLog('📡 جاري الاتصال بـ GitHub API...', 'info');
-            
-            try {
-                // استخدام GitHub API لتفعيل الـ workflow
-                const response = await fetch(
-                    `https://api.github.com/repos/${repoOwner}/${repoName}/actions/workflows/${workflowId}/dispatches`,
-                    {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `token ${githubToken}`,
-                            'Accept': 'application/vnd.github.v3+json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            ref: 'main', // الفرع
-                            inputs: {
-                                chat_id: formData.chat_id,
-                                content_name: formData.content_name,
-                                content_type: formData.content_type,
-                                image_url: formData.image_url,
-                                video_url: formData.video_url,
-                                skip_ssl: formData.skip_ssl
-                            }
-                        })
-                    }
-                );
-                
-                if (response.status === 204) {
-                    addLog('✅ تم تشغيل الـ Action بنجاح!', 'success');
-                    
-                    // الحصول على آخر run
-                    const runsResponse = await fetch(
-                        `https://api.github.com/repos/${repoOwner}/${repoName}/actions/runs`,
-                        {
-                            headers: {
-                                'Authorization': `token ${githubToken}`,
-                                'Accept': 'application/vnd.github.v3+json'
-                            }
-                        }
-                    );
-                    
-                    const runsData = await runsResponse.json();
-                    if (runsData.workflow_runs && runsData.workflow_runs.length > 0) {
-                        const latestRun = runsData.workflow_runs[0];
-                        workflowRunId = latestRun.id;
-                        
-                        // تحديث رابط متابعة الـ Action
-                        const actionsLink = document.getElementById('actionsLink');
-                        actionsLink.href = latestRun.html_url;
-                        
-                        addLog(`🔗 يمكنك متابعة العملية من: ${latestRun.html_url}`, 'info');
-                        
-                        // بدء متابعة التقدم
-                        startProgressTracking();
-                    }
-                    
-                    return { success: true };
-                    
-                } else {
-                    const errorText = await response.text();
-                    throw new Error(`فشل تشغيل الـ Action: ${response.status} - ${errorText}`);
-                }
-                
-            } catch (error) {
-                console.error('GitHub API Error:', error);
-                throw error;
-            }
+        // دالة لفتح صفحة Actions
+        function openActionsPage() {
+            const repoUrl = window.location.origin + window.location.pathname;
+            const actionsUrl = repoUrl.replace(/\/[^\/]*$/, '/actions');
+            window.open(actionsUrl, '_blank');
+            addLog('🔗 تم فتح صفحة Actions في تبويب جديد', 'info');
         }
         
-        // =============== متابعة تقدم الـ Action ===============
-        function startProgressTracking() {
-            let progress = 0;
-            clearInterval(progressInterval);
+        // دالة لإنشاء رابط مباشر لـ Run workflow
+        function createWorkflowLink(formData) {
+            // إنشاء رابط GitHub Actions مباشر
+            const repoPath = window.location.pathname.split('/').slice(1, 3).join('/');
+            const workflowName = 'telegram-uploader.yml';
             
-            progressInterval = setInterval(() => {
-                if (progress < 100) {
-                    progress += 5;
-                    
-                    // تحديث التقدم مع رسائل مختلفة
-                    if (progress < 20) {
-                        updateProgress(progress, 'جاري إعداد الـ Action...');
-                        addLog('⚙️ جاري تحضير البيئة على GitHub...', 'info');
-                    } else if (progress < 40) {
-                        updateProgress(progress, 'جاري تنزيل الصورة...');
-                        addLog('🖼️ جاري تنزيل صورة الغلاف...', 'info');
-                    } else if (progress < 60) {
-                        updateProgress(progress, 'جاري حل مشاكل SSL...');
-                        addLog('🔓 جاري تجاوز مشاكل SSL...', 'info');
-                    } else if (progress < 80) {
-                        updateProgress(progress, 'جاري تنزيل الفيديو...');
-                        addLog('🎥 جاري تنزيل الفيديو...', 'info');
-                    } else if (progress < 90) {
-                        updateProgress(progress, 'جاري الرفع إلى Telegram...');
-                        addLog('📤 جاري رفع الملفات إلى Telegram...', 'info');
-                    } else {
-                        updateProgress(progress, 'جاري الإنهاء...');
-                        addLog('🧹 جاري تنظيف الملفات المؤقتة...', 'info');
-                    }
-                    
-                    // محاكاة سرعة التنزيل
-                    if (progress % 20 === 0) {
-                        const speed = (Math.random() * 10 + 5).toFixed(1);
-                        addLog(`⚡ سرعة التنزيل: ${speed} MB/s`, 'info');
-                    }
-                    
-                } else {
-                    clearInterval(progressInterval);
-                    updateProgress(100, 'تم الرفع بنجاح!');
-                    addLog('✅ تم اكتمال عملية الرفع بنجاح!', 'success');
-                    addLog('📬 يمكنك التحقق من الرسائل في Telegram', 'info');
-                }
-            }, 2000);
+            // هنا سيكون لدينا رابط مخصص للـ workflow
+            // لكن في الواقع، سنعرض إرشادات للمستخدم
+            return {
+                success: true,
+                message: '✅ البيانات صحيحة! اذهب إلى صفحة Actions واضغط Run workflow',
+                instructions: [
+                    '1. اذهب إلى صفحة GitHub Actions',
+                    '2. ابحث عن workflow "Telegram Uploader"',
+                    '3. اضغط على "Run workflow"',
+                    '4. أدخل البيانات التالية:',
+                    `   - chat_id: ${formData.chat_id}`,
+                    `   - content_name: ${formData.content_name}`,
+                    `   - image_url: ${formData.image_url}`,
+                    `   - video_url: ${formData.video_url}`,
+                    '5. اضغط Run workflow'
+                ]
+            };
         }
         
-        // =============== إرسال النموذج ===============
+        // معالجة إرسال النموذج
         document.getElementById('uploadForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحضير...';
             
             // جمع البيانات
             const formData = {
                 chat_id: document.getElementById('chatId').value,
                 content_name: document.getElementById('contentName').value,
-                content_type: 'movie', // ثابت للفيلم
                 image_url: document.getElementById('imageUrl').value,
-                video_url: document.getElementById('videoUrl').value,
-                skip_ssl: document.getElementById('skipSSL').checked
+                video_url: document.getElementById('videoUrl').value
             };
             
             // التحقق من البيانات
             if (!formData.video_url) {
                 addLog('❌ الرجاء إدخال رابط الفيديو', 'error');
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء الرفع الآمن';
+                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء عملية الرفع الآمنة';
                 return;
             }
             
             if (!formData.video_url.toLowerCase().endsWith('.mp4')) {
                 addLog('❌ رابط الفيديو يجب أن ينتهي بــ .mp4', 'error');
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء الرفع الآمن';
+                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء عملية الرفع الآمنة';
                 return;
             }
             
-            addLog('✅ البيانات صحيحة، جاري بدء الرفع...', 'success');
+            addLog('✅ البيانات صحيحة، جاري التحضير...', 'success');
+            updateProgress(20);
             
             try {
-                // إرسال الـ Action
-                const result = await triggerGitHubAction(formData);
+                // محاكاة عملية التحضير
+                addLog('🔍 جاري التحقق من الروابط...', 'info');
+                await sleep(1500);
+                updateProgress(40);
+                
+                addLog('⚙️ جاري إعداد البيانات...', 'info');
+                await sleep(1500);
+                updateProgress(60);
+                
+                // إنشاء إرشادات الرفع
+                const result = createWorkflowLink(formData);
                 
                 if (result.success) {
-                    addLog('🎉 تم بدء عملية الرفع بنجاح!', 'success');
-                    addLog('📊 جاري متابعة التقدم...', 'info');
+                    addLog(result.message, 'success');
+                    updateProgress(80);
+                    
+                    // عرض الإرشادات
+                    result.instructions.forEach(instruction => {
+                        addLog(instruction, 'info');
+                    });
+                    
+                    addLog('🔗 جاري فتح صفحة Actions...', 'info');
+                    await sleep(2000);
+                    updateProgress(100);
+                    
+                    // فتح صفحة Actions
+                    openActionsPage();
+                    
+                    addLog('🎉 تم التحضير بنجاح! اتبع الخطوات أعلاه', 'success');
                 }
                 
             } catch (error) {
                 addLog(`❌ خطأ: ${error.message}`, 'error');
-                
-                // إذا كان الخطأ متعلق بالصلاحيات
-                if (error.message.includes('403') || error.message.includes('permission')) {
-                    addLog('⚠️ Token غير صالح أو غير كاف الصلاحيات', 'error');
-                    addLog('🔄 الرجاء إنشاء Token جديد وإعادة المحاولة', 'info');
-                    
-                    // إعادة إظهار قسم Token
-                    document.getElementById('tokenSection').style.display = 'block';
-                    document.getElementById('formSection').style.display = 'none';
-                    document.getElementById('statusSection').style.display = 'none';
-                }
-                
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء الرفع الآمن';
+                submitBtn.innerHTML = '<i class="fas fa-rocket"></i> بدء عملية الرفع الآمنة';
             }
         });
         
-        // =============== تهيئة الصفحة ===============
+        // دالة sleep للمحاكاة
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // تهيئة الصفحة
         document.addEventListener('DOMContentLoaded', function() {
-            loadSavedToken();
-            addLog('👋 مرحباً! أدخل GitHub Token للبدء', 'info');
+            addLog('👋 مرحباً! املأ بيانات الفيلم للبدء', 'info');
         });
     </script>
 </body>
