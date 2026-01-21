@@ -3,16 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام رفع الأفلام إلى Telegram</title>
+    <title>🎬 رفع أفلام مع عرض جانبي</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1b2a; color: white; min-height: 100vh; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: rgba(0,0,0,0.6); padding: 30px; border-radius: 20px; border: 3px solid #00b4d8; }
+        .container { max-width: 800px; margin: 0 auto; background: rgba(0,0,0,0.7); padding: 30px; border-radius: 20px; border: 3px solid #00b4d8; }
         header { text-align: center; margin-bottom: 30px; }
         header h1 { color: #ffd700; font-size: 2.5rem; margin-bottom: 10px; }
+        .layout-preview { 
+            display: flex; 
+            margin: 20px 0; 
+            background: rgba(255,255,255,0.1); 
+            padding: 20px; 
+            border-radius: 10px;
+            gap: 10px;
+        }
+        .layout-preview img { 
+            width: 40%; 
+            background: #1b263b; 
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #4cc9f0;
+        }
+        .layout-preview video { 
+            width: 60%; 
+            background: #1b263b; 
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #ff4d6d;
+        }
         .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; color: #ffd700; }
-        input { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 2px solid #415a77; border-radius: 10px; color: white; font-size: 1rem; }
+        label { display: block; margin-bottom: 8px; color: #ffd700; font-weight: bold; }
+        input { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 2px solid #415a77; border-radius: 10px; color: white; }
         .btn { padding: 15px 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); color: white; border: none; border-radius: 10px; font-size: 1.1rem; cursor: pointer; width: 100%; margin-top: 20px; }
         .btn:hover { background: linear-gradient(135deg, #0096c7, #005f8a); }
         .logs { background: rgba(0,0,0,0.5); border-radius: 10px; padding: 20px; max-height: 300px; overflow-y: auto; margin-top: 20px; font-family: monospace; }
@@ -21,14 +43,21 @@
 <body>
     <div class="container">
         <header>
-            <h1>🎬 رفع الأفلام إلى Telegram</h1>
-            <p>رفع مباشر باستخدام GitHub Actions</p>
+            <h1>🎬 رفع أفلام مع عرض جانبي</h1>
+            <p>الصورة على اليسار | الفيديو على اليمين</p>
         </header>
+        
+        <div class="layout-preview">
+            <img src="https://via.placeholder.com/300x450/1b263b/ffffff?text=📸+الصورة" alt="الصورة على اليسار">
+            <video controls poster="https://via.placeholder.com/480x360/1b263b/ffffff?text=🎥+الفيديو">
+                <source src="#" type="video/mp4">
+            </video>
+        </div>
         
         <form id="uploadForm">
             <div class="form-group">
-                <label for="chatId">🔗 معرف القناة</label>
-                <input type="text" id="chatId" value="1548535280" required>
+                <label for="inviteLink">🔗 رابط دعوة القناة</label>
+                <input type="text" id="inviteLink" value="https://t.me/+VvLRMffUCXNlNjRk" required>
             </div>
             
             <div class="form-group">
@@ -39,72 +68,61 @@
             <div class="form-group">
                 <label for="imageUrl">🖼️ رابط صورة الغلاف</label>
                 <input type="url" id="imageUrl" value="https://img.downet.net/uploads/U8xQf.webp" required>
+                <small style="color: #4cc9f0;">سترفع على اليسار</small>
             </div>
             
             <div class="form-group">
                 <label for="videoUrl">🎥 رابط الفيديو (.mp4)</label>
                 <input type="url" id="videoUrl" placeholder="https://example.com/video.mp4" required>
+                <small style="color: #ff4d6d;">سترفع على اليمين</small>
             </div>
             
             <button type="submit" class="btn" id="submitBtn">
-                <i class="fas fa-rocket"></i> بدء عملية الرفع
+                <i class="fas fa-film"></i> رفع مع عرض جانبي
             </button>
         </form>
         
         <div class="logs" id="logContainer">
-            <div>🚀 النظام جاهز للبدء</div>
-            <div>📌 Chat ID: 1548535280</div>
+            <div>🚀 جاهز للرفع مع عرض جانبي</div>
+            <div>📸 الصورة ← | الفيديو →</div>
         </div>
-        
-        <footer style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #415a77;">
-            <a href="#" onclick="openActionsPage()" style="color: #00b4d8; text-decoration: none;">
-                <i class="fas fa-external-link-alt"></i> افتح صفحة GitHub Actions
-            </a>
-        </footer>
     </div>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script>
-        function addLog(message, type = 'info') {
+        function addLog(msg, type = 'info') {
             const container = document.getElementById('logContainer');
-            const logEntry = document.createElement('div');
-            logEntry.textContent = `• ${message}`;
-            logEntry.style.color = type === 'error' ? '#f44336' : type === 'success' ? '#4caf50' : '#4cc9f0';
-            container.appendChild(logEntry);
+            const entry = document.createElement('div');
+            entry.textContent = `• ${msg}`;
+            entry.style.color = type === 'error' ? '#ff4d6d' : type === 'success' ? '#4caf50' : '#4cc9f0';
+            container.appendChild(entry);
             container.scrollTop = container.scrollHeight;
         }
         
-        // ⭐ الدالة المعدلة ⭐
-        function openActionsPage() {
-            const actionsUrl = 'https://github.com/elqiser00/Server/actions';
-            window.open(actionsUrl, '_blank');
-            addLog('🔗 تم فتح صفحة GitHub Actions');
-            addLog('📍 ' + actionsUrl);
-        }
-        
-        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحضير...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
             
             const formData = {
-                chat_id: document.getElementById('chatId').value,
+                invite_link: document.getElementById('inviteLink').value,
                 content_name: document.getElementById('contentName').value,
                 image_url: document.getElementById('imageUrl').value,
                 video_url: document.getElementById('videoUrl').value
             };
             
-            addLog('✅ البيانات صحيحة');
-            addLog('🎬 جاري تحضير الرفع...');
+            addLog('🎬 بدء رفع الفيلم...');
+            addLog('📸 الصورة ستظهر على اليسار');
+            addLog('🎥 الفيديو سيظهر على اليمين');
             
             setTimeout(() => {
-                openActionsPage();
-                addLog('📋 اتبع الخطوات في صفحة Actions');
+                window.open('https://github.com/elqiser00/Server/actions', '_blank');
+                addLog('✅ افتح صفحة Actions لتشغيل الرفع', 'success');
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-rocket"></i> بدء عملية الرفع';
+                btn.innerHTML = '<i class="fas fa-film"></i> رفع مع عرض جانبي';
             }, 2000);
         });
     </script>
