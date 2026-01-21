@@ -1,176 +1,219 @@
-name: Telegram Personal Uploader
+# .github/workflows/telegram-auto-uploader.yml
+
+name: Telegram Auto Uploader
 
 on:
-  workflow_dispatch:
-    inputs:
-      chat_id:
-        description: 'معرف القناة/الجروب'
-        required: true
-        type: string
-      content_name:
-        description: 'اسم الفيلم/المسلسل'
-        required: true
-        type: string
-      content_type:
-        description: 'نوع المحتوى'
-        required: true
-        type: choice
-        options:
-        - movie
-        - series
-      image_url:
-        description: 'رابط صورة الغلاف'
-        required: true
-        type: string
-      video_url:
-        description: 'رابط الفيديو'
-        required: false
-        type: string
-      series_files:
-        description: 'روابط الحلقات (مفصولة بفواصل)'
-        required: false
-        type: string
+  repository_dispatch:
+    types: [start-upload]
 
 jobs:
   upload-to-telegram:
     runs-on: ubuntu-latest
     
     steps:
-    - name: بدء العملية
+    - name: استلام البيانات من HTML
       run: |
-        echo "🚀 بدء عملية رفع المحتوى إلى Telegram"
-        echo "📝 اسم المحتوى: ${{ github.event.inputs.content_name }}"
-        echo "🎬 النوع: ${{ github.event.inputs.content_type }}"
-        echo "⏰ وقت البدء: $(date)"
+        echo "📦 بيانات المستلم:"
+        echo "Chat ID: ${{ github.event.client_payload.chat_id }}"
+        echo "Content Name: ${{ github.event.client_payload.content_name }}"
+        echo "Content Type: ${{ github.event.client_payload.content_type }}"
+        echo "Image URL: ${{ github.event.client_payload.image_url }}"
+        echo "Video URL: ${{ github.event.client_payload.video_url || 'N/A' }}"
+        echo "Skip SSL: ${{ github.event.client_payload.skip_ssl }}"
         
-    - name: تثبيت المتطلبات
+    - name: تثبيت المتطلبات مع SSL
       run: |
+        echo "🔧 تثبيت الأدوات المتقدمة..."
         sudo apt-get update
         sudo apt-get install -y \
           wget \
+          curl \
           ffmpeg \
           python3 \
           python3-pip \
-          curl
+          ca-certificates \
+          gnupg \
+          lsb-release
         
-        pip3 install telethon
+        # تحديث شهادات SSL
+        sudo update-ca-certificates
         
-    - name: إنشاء سكربت الرفع
+        # تثبيت Telethon
+        pip3 install telethon requests
+        
+        echo "✅ تم تثبيت جميع المتطلبات"
+        
+    - name: إنشاء سكربت الرفع المتكامل
       run: |
-        cat > uploader.py << 'EOF'
+        cat > auto_uploader.py << 'EOF'
         import asyncio
         import os
         import sys
+        import subprocess
+        import ssl
+        import urllib.request
         from telethon import TelegramClient
         from telethon.sessions import StringSession
+        import json
         
-        # بيانات من Secrets
+        # تحميل البيانات
         API_ID = int(os.environ.get('TELEGRAM_API_ID'))
         API_HASH = os.environ.get('TELEGRAM_API_HASH')
         SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
         
-        # بيانات من GitHub Actions
-        CHAT_ID = os.environ.get('CHAT_ID')
-        CONTENT_NAME = os.environ.get('CONTENT_NAME')
-        CONTENT_TYPE = os.environ.get('CONTENT_TYPE')
-        IMAGE_URL = os.environ.get('IMAGE_URL')
-        VIDEO_URL = os.environ.get('VIDEO_URL', '')
-        SERIES_FILES = os.environ.get('SERIES_FILES', '')
+        # بيانات من repository_dispatch
+        data = json.loads(os.environ.get('UPLOAD_DATA', '{}'))
+        
+        CHAT_ID = data.get('chat_id', '')
+        CONTENT_NAME = data.get('content_name', '')
+        CONTENT_TYPE = data.get('content_type', 'movie')
+        IMAGE_URL = data.get('image_url', '')
+        VIDEO_URL = data.get('video_url', '')
+        SKIP_SSL = data.get('skip_ssl', True)
+        EPISODES = data.get('episodes', [])
+        
+        def log(message, level='INFO'):
+            print(f'[{level}] {message}', flush=True)
+        
+        def download_with_retry(url, filename, skip_ssl=True):
+            """تنزيل ملف مع إعادة المحاولة وتجاوز SSL"""
+            log(f'بدء تنزيل: {filename}')
+            
+            for attempt in range(3):
+                try:
+                    # خيارات wget لتجاوز SSL
+                    cmd = ['wget']
+                    
+                    if skip_ssl:
+                        cmd.extend([
+                            '--no-check-certificate',
+                            '--retry-connrefused',
+                            '--retry-on-http-error=403,404,500,502,503,504'
+                        ])
+                    
+                    cmd.extend([
+                        '--timeout=30',
+                        '--tries=3',
+                        '--waitretry=5',
+                        '--user-agent=Mozilla/5.0',
+                        '-O', filename,
+                        url
+                    ])
+                    
+                    log(f'المحاولة {attempt + 1}: {" ".join(cmd)}')
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        log(f'تم تنزيل {filename} بنجاح', 'SUCCESS')
+                        return True
+                    else:
+                        log(f'فشل المحاولة {attempt + 1}: {result.stderr}', 'WARNING')
+                        continue
+                        
+                except Exception as e:
+                    log(f'خطأ في المحاولة {attempt + 1}: {e}', 'WARNING')
+                    continue
+            
+            log(f'فشل تنزيل {filename} بعد 3 محاولات', 'ERROR')
+            return False
+        
+        def get_file_extension(url):
+            """استخراج امتداد الملف من الرابط"""
+            import re
+            match = re.search(r'\.(mp4|jpg|jpeg|png|webp)$', url.lower())
+            return match.group(1) if match else 'jpg'
         
         async def main():
-            print("=== بدء رفع المحتوى إلى Telegram ===")
+            log('=== بدء سكربت الرفع المتكامل ===')
             
             # إنشاء عميل Telegram
-            client = TelegramClient(
-                StringSession(SESSION_STRING),
-                API_ID,
-                API_HASH
-            )
+            client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
             
             try:
                 # الاتصال
                 await client.connect()
-                print("✅ متصل بـ Telegram")
+                log('✅ متصل بـ Telegram', 'SUCCESS')
                 
-                # تنزيل ورفع الصورة
-                print("📥 جاري تنزيل الصورة...")
-                os.system(f'wget -O "poster.jpg" "{IMAGE_URL}"')
+                # تنظيف اسم المحتوى
+                import re
+                clean_name = re.sub(r'[<>:"/\\|?*]', '', CONTENT_NAME).strip()
+                clean_name = re.sub(r'\s+', ' ', clean_name)
                 
-                print("📤 جاري رفع الصورة...")
-                await client.send_file(
-                    CHAT_ID,
-                    'poster.jpg',
-                    caption=f'🎬 {CONTENT_NAME}'
-                )
-                print("✅ تم رفع الصورة")
+                # 1. تنزيل ورفع الصورة
+                image_ext = get_file_extension(IMAGE_URL)
+                image_filename = f"{clean_name}_poster.{image_ext}"
                 
-                if CONTENT_TYPE == 'movie' and VIDEO_URL:
-                    # فيلم
-                    print("📥 جاري تنزيل الفيديو...")
-                    video_name = f"{CONTENT_NAME}.mp4"
-                    os.system(f'wget -O "{video_name}" "{VIDEO_URL}"')
-                    
-                    print(f"📤 جاري رفع الفيديو: {video_name}")
+                if download_with_retry(IMAGE_URL, image_filename, SKIP_SSL):
+                    log(f'📤 رفع الصورة: {image_filename}')
                     await client.send_file(
                         CHAT_ID,
-                        video_name,
-                        caption=f'🎥 {CONTENT_NAME}'
+                        image_filename,
+                        caption=f'🎬 {CONTENT_NAME}'
                     )
-                    print("✅ تم رفع الفيديو")
+                    log('✅ تم رفع الصورة', 'SUCCESS')
+                
+                # 2. معالجة الفيلم
+                if CONTENT_TYPE == 'movie' and VIDEO_URL:
+                    video_filename = f"{clean_name}.mp4"
                     
-                elif CONTENT_TYPE == 'series' and SERIES_FILES:
-                    # مسلسل
-                    files = SERIES_FILES.split(',')
-                    for i, file_url in enumerate(files, 1):
-                        if file_url.strip():
-                            episode_name = f"{CONTENT_NAME} - الحلقة {i}.mp4"
-                            print(f"📥 جاري تنزيل الحلقة {i}...")
-                            os.system(f'wget -O "{episode_name}" "{file_url.strip()}"')
+                    if download_with_retry(VIDEO_URL, video_filename, SKIP_SSL):
+                        log(f'📤 رفع الفيديو: {video_filename}')
+                        await client.send_file(
+                            CHAT_ID,
+                            video_filename,
+                            caption=f'🎥 {CONTENT_NAME}\n📁 {video_filename}'
+                        )
+                        log('✅ تم رفع الفيديو', 'SUCCESS')
+                
+                # 3. معالجة المسلسل
+                elif CONTENT_TYPE == 'series' and EPISODES:
+                    for i, episode in enumerate(EPISODES, 1):
+                        if episode.get('url'):
+                            episode_filename = f"{clean_name} - الحلقة {i}.mp4"
                             
-                            print(f"📤 جاري رفع الحلقة {i}")
-                            await client.send_file(
-                                CHAT_ID,
-                                episode_name,
-                                caption=f'📺 {CONTENT_NAME} - الحلقة {i}'
-                            )
-                            await asyncio.sleep(1)
-                    
-                print("✅ تم اكتمال العملية بنجاح!")
+                            if download_with_retry(episode['url'], episode_filename, SKIP_SSL):
+                                log(f'📤 رفع الحلقة {i}: {episode_filename}')
+                                await client.send_file(
+                                    CHAT_ID,
+                                    episode_filename,
+                                    caption=f'📺 {CONTENT_NAME} - الحلقة {i}\n📁 {episode_filename}'
+                                )
+                                log(f'✅ تم رفع الحلقة {i}', 'SUCCESS')
+                                await asyncio.sleep(1)
+                
+                log('🎉 تم اكتمال عملية الرفع بنجاح!', 'SUCCESS')
                 
             except Exception as e:
-                print(f"❌ خطأ: {e}")
+                log(f'❌ خطأ: {str(e)}', 'ERROR')
                 sys.exit(1)
+                
             finally:
                 await client.disconnect()
-                print("🔌 تم قطع الاتصال")
+                log('🔌 تم قطع الاتصال')
                 
                 # تنظيف الملفات
-                print("🧹 جاري تنظيف الملفات المؤقتة...")
-                os.system("rm -f *.mp4 *.jpg *.png")
-                print("✅ تم التنظيف")
+                log('🧹 تنظيف الملفات المؤقتة...')
+                os.system("rm -f *.mp4 *.jpg *.jpeg *.png *.webp")
+                log('✅ تم التنظيف')
         
         if __name__ == "__main__":
             asyncio.run(main())
         EOF
         
-        echo "📄 تم إنشاء سكربت الرفع"
+        echo "📄 تم إنشاء سكربت الرفع المتكامل"
         
     - name: تشغيل سكربت الرفع
       env:
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
-        CHAT_ID: ${{ github.event.inputs.chat_id }}
-        CONTENT_NAME: ${{ github.event.inputs.content_name }}
-        CONTENT_TYPE: ${{ github.event.inputs.content_type }}
-        IMAGE_URL: ${{ github.event.inputs.image_url }}
-        VIDEO_URL: ${{ github.event.inputs.video_url }}
-        SERIES_FILES: ${{ github.event.inputs.series_files }}
+        UPLOAD_DATA: ${{ toJson(github.event.client_payload) }}
       run: |
-        echo "⚡ جاري تشغيل سكربت الرفع..."
-        python3 uploader.py
+        echo "⚡ بدء عملية الرفع المتكاملة..."
+        python3 auto_uploader.py
         
-    - name: نهاية العملية
+    - name: إرسال تأكيد النجاح
       run: |
-        echo "🏁 انتهت العملية في: $(date)"
-        echo "✅ تم رفع ${{ github.event.inputs.content_name }} بنجاح"
+        echo "✅ تم اكتمال عملية الرفع بنجاح!"
+        echo "🕒 وقت الانتهاء: $(date)"
