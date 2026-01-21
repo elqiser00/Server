@@ -1,172 +1,86 @@
-# .github/workflows/telegram-auto-uploader.yml
+# .github/workflows/telegram-uploader.yml
 
-name: Telegram Auto Uploader
+name: Telegram Movie Uploader
 
 on:
   workflow_dispatch:
     inputs:
       chat_id:
-        description: 'معرف القناة/الجروب'
+        description: 'معرف القناة/الجروب (مثال: -1001234567890)'
         required: true
         type: string
+        default: '1548535280-'
       content_name:
         description: 'اسم الفيلم'
         required: true
         type: string
+        default: 'Truth & Treason 2025'
       image_url:
         description: 'رابط صورة الغلاف'
         required: true
         type: string
+        default: 'https://img.downet.net/uploads/U8xQf.webp'
       video_url:
         description: 'رابط الفيديو (.mp4 فقط)'
         required: true
         type: string
-      skip_ssl:
-        description: 'تجاوز مشاكل SSL'
-        required: false
-        type: boolean
-        default: true
-
-env:
-  REPO_OWNER: elqiser00
-  REPO_NAME: Server
 
 jobs:
-  upload-movie:
+  upload:
     runs-on: ubuntu-latest
     
     steps:
-    - name: بدء العملية
+    - name: عرض بيانات الإدخال
       run: |
         echo "🎬 بدء رفع فيلم إلى Telegram"
-        echo "📝 الاسم: ${{ github.event.inputs.content_name }}"
+        echo "========================================"
+        echo "📝 اسم الفيلم: ${{ github.event.inputs.content_name }}"
         echo "👥 إلى: ${{ github.event.inputs.chat_id }}"
         echo "🖼️ الصورة: ${{ github.event.inputs.image_url }}"
         echo "🎥 الفيديو: ${{ github.event.inputs.video_url }}"
-        echo "🔓 تجاوز SSL: ${{ github.event.inputs.skip_ssl }}"
         echo "⏰ الوقت: $(date)"
+        echo "========================================"
         
-    - name: تثبيت الأدوات المتقدمة
+    - name: تثبيت الأدوات الأساسية
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          wget \
-          curl \
-          ffmpeg \
-          python3 \
-          python3-pip \
-          ca-certificates
+        echo "🔧 تثبيت الأدوات..."
+        apt-get update
+        apt-get install -y wget ffmpeg python3 python3-pip
         
-        # تحديث شهادات SSL
-        sudo update-ca-certificates --fresh
-        
-        # تثبيت Telethon
+        echo "🐍 تثبيت Telethon..."
         pip3 install telethon
         
-        echo "✅ تم تثبيت جميع الأدوات"
+        echo "✅ تم التثبيت"
         
-    - name: إنشاء سكربت الرفع مع SSL
+    - name: إنشاء سكربت الرفع
       run: |
-        cat > upload_with_ssl.py << 'EOF'
+        cat > upload.py << 'EOF'
         import asyncio
         import os
         import sys
-        import subprocess
-        import ssl
         from telethon import TelegramClient
         from telethon.sessions import StringSession
         
         # بيانات من Secrets
-        API_ID = int(os.environ.get('TELEGRAM_API_ID'))
-        API_HASH = os.environ.get('TELEGRAM_API_HASH')
-        SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
+        API_ID = int(os.environ['TELEGRAM_API_ID'])
+        API_HASH = os.environ['TELEGRAM_API_HASH']
+        SESSION_STRING = os.environ['TELEGRAM_SESSION_STRING']
         
         # بيانات من GitHub
-        CHAT_ID = os.environ.get('CHAT_ID')
-        CONTENT_NAME = os.environ.get('CONTENT_NAME')
-        IMAGE_URL = os.environ.get('IMAGE_URL')
-        VIDEO_URL = os.environ.get('VIDEO_URL')
-        SKIP_SSL = os.environ.get('SKIP_SSL', 'true').lower() == 'true'
-        
-        def log(message):
-            print(f'[INFO] {message}', flush=True)
-        
-        def download_file_advanced(url, filename, skip_ssl=True):
-            """تنزيل ملف مع خيارات متقدمة"""
-            log(f'بدء تنزيل: {filename}')
-            
-            # بناء أمر wget مع خيارات متقدمة
-            cmd = ['wget']
-            
-            if skip_ssl:
-                cmd.extend([
-                    '--no-check-certificate',
-                    '--retry-connrefused',
-                    '--retry-on-http-error=403,404,500,502,503,504'
-                ])
-            
-            cmd.extend([
-                '--timeout=30',
-                '--tries=3',
-                '--waitretry=5',
-                '--user-agent=Mozilla/5.0',
-                '--progress=dot:giga',
-                '-O', filename,
-                url
-            ])
-            
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                
-                if result.returncode == 0:
-                    log(f'✅ تم تنزيل: {filename}')
-                    
-                    # التحقق من حجم الملف
-                    if os.path.exists(filename):
-                        size = os.path.getsize(filename) / (1024 * 1024)
-                        log(f'📊 حجم الملف: {size:.2f} MB')
-                        return True
-                    else:
-                        log(f'❌ الملف غير موجود بعد التنزيل: {filename}')
-                        return False
-                else:
-                    log(f'❌ فشل التنزيل: {result.stderr}')
-                    
-                    # محاولة باستخدام curl
-                    log('🔄 تجربة طريقة بديلة باستخدام curl...')
-                    curl_cmd = [
-                        'curl',
-                        '-L',  # اتبع التوجيهات
-                        '--retry', '3',
-                        '--retry-delay', '5',
-                        '--connect-timeout', '30',
-                        '-o', filename,
-                        url
-                    ]
-                    
-                    if skip_ssl:
-                        curl_cmd.extend(['-k'])  # تجاوز SSL
-                    
-                    result2 = subprocess.run(curl_cmd, capture_output=True, text=True)
-                    if result2.returncode == 0:
-                        log(f'✅ تم التنزيل باستخدام curl: {filename}')
-                        return True
-                    
-                    return False
-                    
-            except Exception as e:
-                log(f'❌ خطأ في التنزيل: {e}')
-                return False
+        CHAT_ID = os.environ['CHAT_ID']
+        CONTENT_NAME = os.environ['CONTENT_NAME']
+        IMAGE_URL = os.environ['IMAGE_URL']
+        VIDEO_URL = os.environ['VIDEO_URL']
         
         async def main():
-            log('=== بدء عملية الرفع المتكاملة ===')
+            print("🚀 بدء عملية الرفع...")
             
             # تنظيف اسم الفيلم
             import re
             clean_name = re.sub(r'[<>:"/\\|?*]', '', CONTENT_NAME).strip()
             clean_name = re.sub(r'\s+', ' ', clean_name)
             
-            log(f'📁 الاسم النظيف: {clean_name}')
+            print(f"📁 الاسم النظيف: {clean_name}")
             
             # إنشاء عميل Telegram
             client = TelegramClient(
@@ -178,61 +92,53 @@ jobs:
             try:
                 # الاتصال
                 await client.connect()
-                log('✅ متصل بـ Telegram')
+                print("✅ متصل بـ Telegram")
                 
-                # 1. تنزيل ورفع الصورة
-                image_filename = f"{clean_name}_poster.jpg"
-                log(f'🖼️ جاري تنزيل الصورة...')
+                # 1. تنزيل الصورة
+                print("🖼️ جاري تنزيل الصورة...")
+                os.system(f'wget -O "poster.jpg" "{IMAGE_URL}"')
                 
-                if download_file_advanced(IMAGE_URL, image_filename, SKIP_SSL):
-                    log(f'📤 جاري رفع الصورة...')
-                    await client.send_file(
-                        CHAT_ID,
-                        image_filename,
-                        caption=f'🎬 {CONTENT_NAME}\n📤 تم الرفع عبر GitHub'
-                    )
-                    log('✅ تم رفع الصورة')
-                else:
-                    log('❌ فشل تنزيل الصورة')
+                # 2. رفع الصورة
+                print("📤 جاري رفع الصورة...")
+                await client.send_file(
+                    CHAT_ID,
+                    'poster.jpg',
+                    caption=f'🎬 {CONTENT_NAME}\n📤 تم الرفع عبر GitHub'
+                )
+                print("✅ تم رفع الصورة")
                 
-                # 2. تنزيل ورفع الفيديو
-                video_filename = f"{clean_name}.mp4"
-                log(f'🎥 جاري تنزيل الفيديو...')
+                # 3. تنزيل الفيديو
+                print("🎥 جاري تنزيل الفيديو...")
+                video_name = f"{clean_name}.mp4"
+                os.system(f'wget -O "{video_name}" "{VIDEO_URL}"')
                 
-                if download_file_advanced(VIDEO_URL, video_filename, SKIP_SSL):
-                    log(f'📤 جاري رفع الفيديو...')
-                    
-                    # إرسال الفيديو مع تقدم التنزيل
-                    file_size = os.path.getsize(video_filename) / (1024 * 1024)
-                    
-                    await client.send_file(
-                        CHAT_ID,
-                        video_filename,
-                        caption=f'🎥 {CONTENT_NAME}\n📁 {video_filename}\n📊 الحجم: {file_size:.2f} MB\n✅ تم الرفع بنجاح'
-                    )
-                    log('✅ تم رفع الفيديو')
-                else:
-                    log('❌ فشل تنزيل الفيديو')
+                # 4. رفع الفيديو
+                print("📤 جاري رفع الفيديو...")
+                await client.send_file(
+                    CHAT_ID,
+                    video_name,
+                    caption=f'🎥 {CONTENT_NAME}\n📁 {video_name}\n✅ تم الرفع بنجاح'
+                )
+                print("✅ تم رفع الفيديو")
                 
-                log('🎉 تم اكتمال عملية الرفع بنجاح!')
+                print("🎉 تم اكتمال عملية الرفع بنجاح!")
                 
             except Exception as e:
-                log(f'❌ خطأ: {str(e)}')
+                print(f"❌ خطأ: {e}")
                 sys.exit(1)
             finally:
                 await client.disconnect()
-                log('🔌 تم قطع الاتصال')
+                print("🔌 تم قطع الاتصال")
                 
                 # تنظيف الملفات
-                log('🧹 جاري تنظيف الملفات المؤقتة...')
-                os.system("rm -f *.mp4 *.jpg *.jpeg *.png 2>/dev/null || true")
-                log('✅ تم التنظيف')
+                print("🧹 تنظيف الملفات...")
+                os.system("rm -f *.mp4 *.jpg 2>/dev/null || true")
         
         if __name__ == "__main__":
             asyncio.run(main())
         EOF
         
-        echo "📄 تم إنشاء سكربت الرفع المتقدم"
+        echo "📄 تم إنشاء سكربت الرفع"
         
     - name: تشغيل سكربت الرفع
       env:
@@ -243,27 +149,14 @@ jobs:
         CONTENT_NAME: ${{ github.event.inputs.content_name }}
         IMAGE_URL: ${{ github.event.inputs.image_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
-        SKIP_SSL: ${{ github.event.inputs.skip_ssl }}
       run: |
-        echo "⚡ بدء سكربت الرفع مع SSL..."
-        python3 upload_with_ssl.py
+        echo "⚡ تشغيل سكربت الرفع..."
+        python3 upload.py
         
-    - name: إرسال إشعار النجاح
+    - name: إظهار رسالة النجاح
       run: |
-        echo "✅ تم اكتمال عملية الرفع بنجاح!"
-        echo "📊 ملخص العملية:"
-        echo "   الفيلم: ${{ github.event.inputs.content_name }}"
-        echo "   إلى: ${{ github.event.inputs.chat_id }}"
-        echo "   الوقت: $(date)"
-        echo "   الحالة: ✅ ناجح"
-        
-    - name: إرسال تقرير الخطأ (إذا فشلت)
-      if: failure()
-      run: |
-        echo "❌ فشلت عملية الرفع"
+        echo "========================================"
+        echo "✅ تم رفع الفيلم بنجاح!"
+        echo "📝 الاسم: ${{ github.event.inputs.content_name }}"
         echo "🕒 الوقت: $(date)"
-        echo "🔧 تحقق من:"
-        echo "   1. صحة الروابط"
-        echo "   2. وجود Secrets"
-        echo "   3. اتصال الإنترنت"
-        exit 1
+        echo "========================================"
