@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       chat_id:
-        description: 'معرف القناة/الجروب (مثال: -1001234567890)'
+        description: 'معرف القناة/الجروب'
         required: true
         type: string
         default: '1548535280-'
@@ -44,43 +44,76 @@ jobs:
     - name: تثبيت الأدوات الأساسية
       run: |
         echo "🔧 تثبيت الأدوات..."
-        apt-get update
-        apt-get install -y wget ffmpeg python3 python3-pip
+        sudo apt-get update -y
+        sudo apt-get install -y wget ffmpeg python3 python3-pip
         
+        echo "✅ تم تثبيت الأدوات"
+        
+    - name: تثبيت Telethon
+      run: |
         echo "🐍 تثبيت Telethon..."
         pip3 install telethon
         
-        echo "✅ تم التثبيت"
+        echo "✅ تم تثبيت Telethon"
         
-    - name: إنشاء سكربت الرفع
+    - name: إنشاء سكربت الرفع البسيط
       run: |
         cat > upload.py << 'EOF'
         import asyncio
         import os
         import sys
+        import subprocess
         from telethon import TelegramClient
         from telethon.sessions import StringSession
         
         # بيانات من Secrets
         API_ID = int(os.environ['TELEGRAM_API_ID'])
-        API_HASH = os.environ['TELEGRAM_API_HASH']
-        SESSION_STRING = os.environ['TELEGRAM_SESSION_STRING']
+        API_HASH = os.environ['TELEGRAM_API_HASH'])
+        SESSION_STRING = os.environ['TELEGRAM_SESSION_STRING'])
         
         # بيانات من GitHub
-        CHAT_ID = os.environ['CHAT_ID']
-        CONTENT_NAME = os.environ['CONTENT_NAME']
-        IMAGE_URL = os.environ['IMAGE_URL']
-        VIDEO_URL = os.environ['VIDEO_URL']
+        CHAT_ID = os.environ['CHAT_ID'])
+        CONTENT_NAME = os.environ['CONTENT_NAME'])
+        IMAGE_URL = os.environ['IMAGE_URL'])
+        VIDEO_URL = os.environ['VIDEO_URL'])
+        
+        def log(message):
+            print(f'[INFO] {message}', flush=True)
+        
+        def download_file(url, filename):
+            """تنزيل ملف باستخدام wget مع خيارات"""
+            log(f'تنزيل {filename}...')
+            
+            # استخدام wget مع خيارات متقدمة
+            cmd = [
+                'wget',
+                '--no-check-certificate',  # تجاوز SSL
+                '-c',  # استئناف التحميل
+                '-O', filename,
+                url
+            ]
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    log(f'✅ تم تنزيل {filename}')
+                    return True
+                else:
+                    log(f'❌ فشل تنزيل {filename}: {result.stderr}')
+                    return False
+            except Exception as e:
+                log(f'❌ خطأ في التنزيل: {e}')
+                return False
         
         async def main():
-            print("🚀 بدء عملية الرفع...")
+            log('🚀 بدء عملية الرفع...')
             
             # تنظيف اسم الفيلم
             import re
             clean_name = re.sub(r'[<>:"/\\|?*]', '', CONTENT_NAME).strip()
             clean_name = re.sub(r'\s+', ' ', clean_name)
             
-            print(f"📁 الاسم النظيف: {clean_name}")
+            log(f'📁 الاسم النظيف: {clean_name}')
             
             # إنشاء عميل Telegram
             client = TelegramClient(
@@ -92,47 +125,43 @@ jobs:
             try:
                 # الاتصال
                 await client.connect()
-                print("✅ متصل بـ Telegram")
+                log('✅ متصل بـ Telegram')
                 
-                # 1. تنزيل الصورة
-                print("🖼️ جاري تنزيل الصورة...")
-                os.system(f'wget -O "poster.jpg" "{IMAGE_URL}"')
+                # 1. تنزيل ورفع الصورة
+                image_filename = "poster.jpg"
+                if download_file(IMAGE_URL, image_filename):
+                    log('📤 رفع الصورة...')
+                    await client.send_file(
+                        CHAT_ID,
+                        image_filename,
+                        caption=f'🎬 {CONTENT_NAME}'
+                    )
+                    log('✅ تم رفع الصورة')
                 
-                # 2. رفع الصورة
-                print("📤 جاري رفع الصورة...")
-                await client.send_file(
-                    CHAT_ID,
-                    'poster.jpg',
-                    caption=f'🎬 {CONTENT_NAME}\n📤 تم الرفع عبر GitHub'
-                )
-                print("✅ تم رفع الصورة")
+                # 2. تنزيل ورفع الفيديو
+                video_filename = f"{clean_name}.mp4"
+                if download_file(VIDEO_URL, video_filename):
+                    log('📤 رفع الفيديو...')
+                    await client.send_file(
+                        CHAT_ID,
+                        video_filename,
+                        caption=f'🎥 {CONTENT_NAME}\n📁 {video_filename}'
+                    )
+                    log('✅ تم رفع الفيديو')
                 
-                # 3. تنزيل الفيديو
-                print("🎥 جاري تنزيل الفيديو...")
-                video_name = f"{clean_name}.mp4"
-                os.system(f'wget -O "{video_name}" "{VIDEO_URL}"')
-                
-                # 4. رفع الفيديو
-                print("📤 جاري رفع الفيديو...")
-                await client.send_file(
-                    CHAT_ID,
-                    video_name,
-                    caption=f'🎥 {CONTENT_NAME}\n📁 {video_name}\n✅ تم الرفع بنجاح'
-                )
-                print("✅ تم رفع الفيديو")
-                
-                print("🎉 تم اكتمال عملية الرفع بنجاح!")
+                log('🎉 تم اكتمال عملية الرفع بنجاح!')
                 
             except Exception as e:
-                print(f"❌ خطأ: {e}")
+                log(f'❌ خطأ: {e}')
                 sys.exit(1)
             finally:
                 await client.disconnect()
-                print("🔌 تم قطع الاتصال")
+                log('🔌 تم قطع الاتصال')
                 
                 # تنظيف الملفات
-                print("🧹 تنظيف الملفات...")
+                log('🧹 تنظيف الملفات...')
                 os.system("rm -f *.mp4 *.jpg 2>/dev/null || true")
+                log('✅ تم التنظيف')
         
         if __name__ == "__main__":
             asyncio.run(main())
@@ -153,10 +182,9 @@ jobs:
         echo "⚡ تشغيل سكربت الرفع..."
         python3 upload.py
         
-    - name: إظهار رسالة النجاح
+    - name: عرض نتيجة الرفع
       run: |
         echo "========================================"
-        echo "✅ تم رفع الفيلم بنجاح!"
-        echo "📝 الاسم: ${{ github.event.inputs.content_name }}"
+        echo "✅ تم تنفيذ سكربت الرفع"
         echo "🕒 الوقت: $(date)"
         echo "========================================"
