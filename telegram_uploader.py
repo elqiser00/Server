@@ -1,4 +1,4 @@
-# telegram_uploader.py
+# telegram_uploader_fixed.py
 import asyncio
 import os
 import sys
@@ -12,20 +12,12 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.messages import SendMultiMediaRequest
 from telethon.tl.types import InputMediaUploadedPhoto, InputMediaUploadedDocument
 
-print("🎬 Telegram Movie Uploader v3.0")
+print("🎬 Telegram Movie Uploader v3.1 - Fixed")
 print("=" * 60)
 
 class MovieUploader:
     def __init__(self):
         self.client = None
-        self.session = None
-        
-    async def setup_ssl_context(self):
-        """إعداد SSL لتجاوز مشاكل الشهادات"""
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        return ctx
         
     async def download_file(self, url, filename, max_retries=3):
         """تنزيل ملف مع تجاوز SSL وإعادة المحاولة"""
@@ -33,10 +25,9 @@ class MovieUploader:
             try:
                 print(f"⬇️  محاولة تنزيل {filename} ({attempt + 1}/{max_retries})...")
                 
-                # استخدام wget مع خيارات SSL
                 cmd = [
                     'wget',
-                    '--no-check-certificate',  # ⭐ تجاوز SSL
+                    '--no-check-certificate',
                     '--timeout=60',
                     '--tries=3',
                     '--waitretry=5',
@@ -68,11 +59,8 @@ class MovieUploader:
     
     def clean_filename(self, name, max_length=60):
         """تنظيف اسم الملف وتعديله"""
-        # إزالة الأحرف غير المسموحة
         name = re.sub(r'[<>:"/\\|?*]', '', name)
-        # استبدال المساحات المتعددة
         name = re.sub(r'\s+', ' ', name)
-        # تقصير إذا كان طويلاً
         if len(name) > max_length:
             name = name[:max_length-3] + "..."
         return name.strip()
@@ -87,14 +75,13 @@ class MovieUploader:
                 api_id,
                 api_hash,
                 connection_retries=5,
-                request_retries=3,
-                use_ipv6=False
+                request_retries=3
             )
             
             await self.client.connect()
             
             if not await self.client.is_user_authorized():
-                print("❌ الجلسة غير صالحة! يرجى إنشاء SESSION_STRING جديدة")
+                print("❌ الجلسة غير صالحة!")
                 return False
             
             me = await self.client.get_me()
@@ -113,20 +100,21 @@ class MovieUploader:
             # ⭐⭐ رفع الملفات أولاً ⭐⭐
             print("📦 جاري تحميل الملفات إلى Telegram...")
             
-            # رفع الصورة
+            # ⭐⭐ التصحيح: part_size_kb=512 أو أقل ⭐⭐
+            print("📸 رفع الصورة...")
             photo_upload = await self.client.upload_file(
                 poster_path,
-                part_size_kb=512
+                part_size_kb=512  # ⭐ 512KB كحد أقصى ⭐
             )
+            print("✅ تم رفع الصورة")
             
-            # رفع الفيديو مع دعم البث المباشر
+            print("🎥 رفع الفيديو...")
             video_upload = await self.client.upload_file(
                 video_path,
-                part_size_kb=1024,  # أجزاء أكبر للسرعة
-                file_name=video_filename  # ⭐ اسم الملف المعدل ⭐
+                part_size_kb=512,  # ⭐ 512KB كحد أقصى ⭐
+                file_name=video_filename
             )
-            
-            print("✅ تم تحميل الملفات")
+            print("✅ تم رفع الفيديو")
             
             # ⭐⭐ إنشاء وسائط متعددة (ألبوم) ⭐⭐
             media = [
@@ -143,7 +131,7 @@ class MovieUploader:
                             w=0,
                             h=0,
                             round_message=False,
-                            supports_streaming=True  # ⭐ دعم البث المباشر ⭐
+                            supports_streaming=True
                         )
                     ],
                     caption=f"🎥 {movie_name}\n📁 {video_filename}\n✅ الفيلم كامل - يعمل كمشغل"
@@ -172,6 +160,61 @@ class MovieUploader:
             print(f"❌ خطأ في رفع الألبوم: {e}")
             return False
     
+    async def upload_separate_but_together(self, channel, poster_path, video_path, movie_name, video_filename):
+        """بديل: رفع ملفين منفصلين ولكن متتاليين"""
+        print(f"\n📤 جاري رفع الصورة والفيديو (بديل)...")
+        
+        try:
+            # 1. رفع الصورة أولاً
+            print("📸 رفع الصورة...")
+            await self.client.send_file(
+                channel,
+                poster_path,
+                caption=f"🎬 {movie_name}\n📸 بوستر الفيلم\n⏳ جاري رفع الفيديو..."
+            )
+            print("✅ تم رفع الصورة")
+            
+            # 2. رفع الفيديو ثانياً
+            print("🎥 رفع الفيديو...")
+            
+            # دالة عرض التقدم
+            upload_start = time.time()
+            last_update = 0
+            
+            def progress_callback(current, total):
+                nonlocal last_update
+                now = time.time()
+                
+                if now - last_update > 10:  # تحديث كل 10 ثوان
+                    percent = (current / total) * 100
+                    elapsed = now - upload_start
+                    speed = current / elapsed / (1024 * 1024)
+                    
+                    print(f"📤 رفع الفيديو: {percent:.1f}% | "
+                          f"{current/(1024*1024):.1f}/{total/(1024*1024):.1f} MB | "
+                          f"{speed:.2f} MB/ث")
+                    last_update = now
+            
+            # رفع الفيديو
+            await self.client.send_file(
+                channel,
+                video_path,
+                caption=f"🎥 {movie_name}\n📁 {video_filename}\n✅ الفيلم كامل - يعمل كمشغل",
+                progress_callback=progress_callback,
+                supports_streaming=True,
+                file_name=video_filename,
+                part_size_kb=512  # ⭐ مهم: 512KB ⭐
+            )
+            
+            upload_time = time.time() - upload_start
+            print(f"✅ تم رفع الفيديو في {upload_time/60:.1f} دقيقة")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ خطأ في الرفع: {e}")
+            return False
+    
     async def run(self, config):
         """تشغيل العملية الرئيسية"""
         try:
@@ -192,9 +235,8 @@ class MovieUploader:
                 print(f"❌ خطأ في القناة: {e}")
                 return False
             
-            # 3. ⭐⭐ تعديل اسم ملف الفيديو ⭐⭐
-            original_video_name = config['movie_name']
-            cleaned_name = self.clean_filename(original_video_name)
+            # 3. تعديل اسم ملف الفيديو
+            cleaned_name = self.clean_filename(config['movie_name'])
             video_filename = f"{cleaned_name}.mp4"
             print(f"📝 اسم الفيديو المعدل: {video_filename}")
             
@@ -209,21 +251,33 @@ class MovieUploader:
                 return False
             
             # تنزيل الفيديو
-            print(f"🎥 جاري تنزيل الفيديو ({config['movie_name']})...")
+            print(f"🎥 جاري تنزيل الفيديو...")
             if not await self.download_file(config['video_url'], video_path):
                 return False
             
             video_size = os.path.getsize(video_path)
             print(f"✅ حجم الفيديو: {video_size/(1024*1024):.1f} MB")
             
-            # 5. رفع الصورة والفيديو معاً
+            # 5. محاولة رفع الألبوم أولاً
+            print(f"\n🔄 محاولة رفع كألبوم...")
             success = await self.upload_side_by_side(
                 channel,
                 poster_path,
                 video_path,
                 config['movie_name'],
-                video_filename  # ⭐ الاسم المعدل ⭐
+                video_filename
             )
+            
+            # 6. إذا فشل الألبوم، جرب الرفع المنفصل
+            if not success:
+                print(f"\n🔄 جرب طريقة الرفع المنفصل...")
+                success = await self.upload_separate_but_together(
+                    channel,
+                    poster_path,
+                    video_path,
+                    config['movie_name'],
+                    video_filename
+                )
             
             return success
             
@@ -234,7 +288,7 @@ class MovieUploader:
             
         finally:
             # تنظيف الملفات
-            for file in ['movie_poster.jpg', 'full_movie.mp4']:
+            for file in [poster_path, video_path]:
                 if os.path.exists(file):
                     os.remove(file)
                     print(f"🗑️  تم حذف: {file}")
@@ -245,7 +299,6 @@ class MovieUploader:
 
 async def main():
     """الدالة الرئيسية"""
-    # ⭐⭐ إعدادات التحميل ⭐⭐
     config = {
         'api_id': int(os.environ.get('TELEGRAM_API_ID', '0')),
         'api_hash': os.environ.get('TELEGRAM_API_HASH', ''),
@@ -257,18 +310,12 @@ async def main():
     }
     
     print(f"🎬 الفيلم: {config['movie_name']}")
-    print(f"📢 القناة: {config['channel_link']}")
-    print(f"🖼️  البوستر: {config['poster_url'][:50]}...")
-    print(f"🎥 الفيديو: {config['video_url'][:50]}...")
+    print(f"👤 الحساب: @ELQISEER")
     print("=" * 60)
     
-    # التحقق من المدخلات
     if not config['video_url']:
         print("❌ يرجى إدخال رابط الفيديو")
         return False
-    
-    if not config['video_url'].lower().endswith('.mp4'):
-        print("⚠️  رابط الفيديو يجب أن ينتهي بـ .mp4")
     
     # تشغيل الرفع
     uploader = MovieUploader()
@@ -277,10 +324,9 @@ async def main():
     if success:
         print("\n" + "=" * 60)
         print("🎉 تم الرفع بنجاح!")
-        print("📸 الصورة والفيديو في نفس البوست")
-        print("📍 الصورة على اليسار | الفيديو على اليمين")
-        print("📝 اسم الفيلم في الكابشن")
-        print("🎬 الفيديو يعمل كمشغل مباشر")
+        print("✅ الصورة والفيديو في القناة")
+        print("✅ اسم الفيلم ظاهر")
+        print("✅ الفيديو يعمل كمشغل")
         print("=" * 60)
     else:
         print("\n❌ فشل الرفع!")
@@ -288,17 +334,9 @@ async def main():
     return success
 
 if __name__ == "__main__":
-    # إعدادات asyncio للملفات الكبيرة
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    
-    # تشغيل البرنامج
     try:
         success = asyncio.run(main())
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\n⏹️  تم إيقاف العملية")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n💥 خطأ في التشغيل: {e}")
         sys.exit(1)
