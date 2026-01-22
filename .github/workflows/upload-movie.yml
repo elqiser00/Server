@@ -1,5 +1,5 @@
-# .github/workflows/upload-movie.yml
-name: 🎬 رفع فيلم كامل
+# .github/workflows/upload-movie-fixed.yml
+name: 🎬 رفع فيلم - مصحح
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
         default: 'https://img.downet.net/uploads/U8xQf.webp'
         type: string
       video_url:
-        description: 'رابط الفيديو (.mp4)'
+        description: 'رابط الفيديو'
         required: true
         type: string
 
@@ -34,13 +34,14 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y python3 python3-pip wget
-        pip3 install telethon aiohttp --quiet
+        pip3 install telethon --quiet
         
-    - name: 📝 نسخ سكربت الرفع
+    - name: 📝 إنشاء السكربت المصحح
       run: |
-        # انسخ محتوى telegram_uploader.py هنا
-        # أو انزله من URL
-        wget -O uploader.py "https://raw.githubusercontent.com/elqiser00/Server/main/telegram_uploader.py"
+        # انسخ محتوى الكود أعلاه هنا
+        cat > uploader_fixed.py << 'EOF'
+        [ضع محتوى الكود Python الكامل هنا]
+        EOF
         
     - name: ⚡ تشغيل الرفع
       env:
@@ -52,7 +53,7 @@ jobs:
         POSTER_URL: ${{ github.event.inputs.poster_url }}
         VIDEO_URL: ${{ github.event.inputs.video_url }}
       run: |
-        echo "⚡ بدء رفع فيلم..."
+        echo "⚡ بدء رفع فيلم (مصحح)..."
         echo "========================================"
-        python3 uploader.py
+        python3 uploader_fixed.py
         echo "========================================"
