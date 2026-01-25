@@ -39,7 +39,7 @@ jobs:
         
     - name: إنشاء سكربت الرفع
       run: |
-        cat > upload.py << 'PYTHON_EOF'
+        cat > upload.py << 'PYTHON_CODE'
 import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -77,7 +77,7 @@ async def main():
     print("تم الانتهاء بنجاح!")
 
 asyncio.run(main())
-PYTHON_EOF
+PYTHON_CODE
         
     - name: تشغيل الرفع
       env:
