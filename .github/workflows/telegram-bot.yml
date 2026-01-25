@@ -1,43 +1,38 @@
-name: Telegram Movie Uploader
+name: Movie Upload
 
 on:
   workflow_dispatch:
     inputs:
       channel:
-        description: 'Telegram Channel Link'
+        description: 'Channel URL'
         required: true
-        type: string
       movie:
         description: 'Movie Name'
         required: true
-        type: string
       poster:
-        description: 'Poster Image URL'
+        description: 'Poster URL'
         required: true
-        type: string
       video:
-        description: 'Video File URL'
+        description: 'Video URL'
         required: true
-        type: string
 
 jobs:
   upload:
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: Install requirements
+    - name: Setup
       run: |
         sudo apt update
         sudo apt install -y python3 python3-pip curl
         pip3 install telethon
-
-    - name: Download files
+        
+    - name: Download
       run: |
         curl -L --insecure -o poster.jpg "${{ github.event.inputs.poster }}"
         curl -L --insecure -o video.mp4 "${{ github.event.inputs.video }}"
-        echo "Files downloaded"
-
-    - name: Upload to Telegram
+        
+    - name: Run Upload
       env:
         API_ID: ${{ secrets.TELEGRAM_API_ID }}
         API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -48,45 +43,39 @@ import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-async def upload():
-    # Connect to Telegram
-    client = TelegramClient(
-        StringSession(os.environ["SESSION"]),
-        int(os.environ["API_ID"]),
-        os.environ["API_HASH"]
-    )
-    
+client = TelegramClient(
+    StringSession(os.environ["SESSION"]),
+    int(os.environ["API_ID"]),
+    os.environ["API_HASH"]
+)
+
+async def main():
     await client.connect()
     
     if not await client.is_user_authorized():
-        print("ERROR: Invalid session")
+        print("Error: Invalid session")
         return
     
-    print("SUCCESS: Connected to Telegram")
+    print("Connected to Telegram")
     
-    # Get channel
     channel = await client.get_entity("${{ github.event.inputs.channel }}")
-    print(f"Channel: {channel.title}")
     
     # Send poster
-    print("Sending poster...")
     await client.send_file(channel, "poster.jpg", caption="🎬 ${{ github.event.inputs.movie }}")
     print("Poster sent")
     
     # Send video
-    print("Sending video...")
     video_size = os.path.getsize("video.mp4") / (1024 * 1024)
     caption = f"🎥 ${{ github.event.inputs.movie }}\\n✅ Complete Movie\\n📊 Size: {video_size:.2f} MB"
     await client.send_file(channel, "video.mp4", caption=caption, supports_streaming=True)
     print("Video sent")
     
     await client.disconnect()
-    print("DONE: Upload completed")
+    print("Done!")
 
-asyncio.run(upload())
+asyncio.run(main())
 '
-
-    - name: Cleanup
+        
+    - name: Clean
       run: |
         rm -f poster.jpg video.mp4
-        echo "Cleanup done"
