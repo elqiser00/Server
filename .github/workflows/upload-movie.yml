@@ -50,72 +50,73 @@ jobs:
       run: |
         echo "🚀 بدء رفع الفيلم: ${{ github.event.inputs.movie_name }}"
         
-        python3 -c "
+        python3 -c '
 import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-print('🔗 جاري الاتصال بالتليجرام...')
+print("🔗 جاري الاتصال بالتليجرام...")
 
 async def main():
     # الاتصال
     client = TelegramClient(
-        StringSession('$TELEGRAM_SESSION_STRING'),
-        $TELEGRAM_API_ID,
-        '$TELEGRAM_API_HASH'
+        StringSession(os.environ["TELEGRAM_SESSION_STRING"]),
+        int(os.environ["TELEGRAM_API_ID"]),
+        os.environ["TELEGRAM_API_HASH"]
     )
     
     await client.connect()
     
     if not await client.is_user_authorized():
-        print('❌ خطأ: الجلسة غير صالحة!')
+        print("❌ خطأ: الجلسة غير صالحة!")
         return
     
     me = await client.get_me()
-    print(f'✅ متصل بـ: {me.first_name} (@{me.username})')
+    print(f"✅ متصل بـ: {me.first_name} (@{me.username})")
     
     # الحصول على القناة
     try:
-        channel = await client.get_entity('${{ github.event.inputs.channel_link }}')
-        print(f'📢 القناة: {channel.title}')
-    except:
-        print('❌ خطأ: لا يمكن الوصول للقناة!')
+        channel = await client.get_entity("${{ github.event.inputs.channel_link }}")
+        print(f"📢 القناة: {channel.title}")
+    except Exception as e:
+        print(f"❌ خطأ: لا يمكن الوصول للقناة: {e}")
         return
     
     # إرسال الصورة
-    print('🖼️ جاري إرسال الصورة...')
+    print("🖼️ جاري إرسال الصورة...")
     try:
         await client.send_file(
             channel,
-            'poster.jpg',
-            caption='🎬 ${{ github.event.inputs.movie_name }}',
-            parse_mode='html'
+            "poster.jpg",
+            caption="🎬 ${{ github.event.inputs.movie_name }}",
+            parse_mode="html"
         )
-        print('✅ تم إرسال الصورة')
+        print("✅ تم إرسال الصورة")
     except Exception as e:
-        print(f'❌ خطأ في إرسال الصورة: {e}')
+        print(f"❌ خطأ في إرسال الصورة: {e}")
     
     # إرسال الفيديو
-    print('🎥 جاري إرسال الفيديو...')
+    print("🎥 جاري إرسال الفيديو...")
     try:
-        video_size = os.path.getsize('video.mp4') / (1024 * 1024)
+        video_size = os.path.getsize("video.mp4") / (1024 * 1024)
+        caption = f"🎥 ${{ github.event.inputs.movie_name }}\\n✅ فيلم كامل\\n📊 الحجم: {video_size:.2f} MB"
         await client.send_file(
             channel,
-            'video.mp4',
-            caption=f'🎥 ${{ github.event.inputs.movie_name }}\\n✅ فيلم كامل\\n📊 الحجم: {video_size:.2f} MB',
-            parse_mode='html',
+            "video.mp4",
+            caption=caption,
+            parse_mode="html",
             supports_streaming=True
         )
-        print('✅ تم إرسال الفيديو')
+        print("✅ تم إرسال الفيديو")
     except Exception as e:
-        print(f'❌ خطأ في إرسال الفيديو: {e}')
+        print(f"❌ خطأ في إرسال الفيديو: {e}")
     
     # إنهاء
     await client.disconnect()
-    print('🎉 تم الانتهاء بنجاح!')
+    print("🎉 تم الانتهاء بنجاح!")
 
 asyncio.run(main())
-"
+'
         
         # تنظيف الملفات
         rm -f poster.jpg video.mp4
