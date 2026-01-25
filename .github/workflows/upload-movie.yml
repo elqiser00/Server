@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_link:
-        description: 'رابط القناة (مثال: https://t.me/+xxxxxxxxxx)'
+        description: 'رابط القناة'
         required: true
         type: string
       movie_name:
@@ -12,50 +12,45 @@ on:
         required: true
         type: string
       poster_url:
-        description: 'رابط الصورة (صيغة jpg, png, webp)'
+        description: 'رابط الصورة'
         required: true
         type: string
       video_url:
-        description: 'رابط الفيديو (صيغة mp4)'
+        description: 'رابط الفيديو'
         required: true
         type: string
 
 jobs:
-  upload-movie:
+  upload:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     
     steps:
-    - name: 📦 تثبيت المتطلبات
+    - name: تثبيت المتطلبات
       run: |
-        echo "تثبيت الأدوات المطلوبة..."
         sudo apt update
         sudo apt install -y python3 python3-pip curl ffmpeg
         pip3 install telethon
         
-    - name: 📥 تحميل الملفات
+    - name: تحميل الملفات
       run: |
-        echo "تحميل ملفات الفيلم..."
-        curl -L --insecure --max-time 300 -o poster.jpg "${{ github.event.inputs.poster_url }}"
-        curl -L --insecure --max-time 600 -o video.mp4 "${{ github.event.inputs.video_url }}"
+        curl -L --insecure -o poster.jpg "${{ github.event.inputs.poster_url }}"
+        curl -L --insecure -o video.mp4 "${{ github.event.inputs.video_url }}"
+        echo "تم تحميل الملفات"
+        ls -la poster.jpg video.mp4
         
-        echo "📊 حجم الملفات:"
-        ls -lh poster.jpg video.mp4
-        
-    - name: 📤 رفع إلى تليجرام
+    - name: رفع إلى تليجرام
       env:
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
       run: |
-        echo "🚀 بدء رفع الفيلم: ${{ github.event.inputs.movie_name }}"
-        
-        python3 -c '
+        python3 << "EOF"
 import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-print("🔗 جاري الاتصال بالتليجرام...")
+print("🚀 بدء رفع الفيلم")
 
 async def main():
     # الاتصال
@@ -68,35 +63,34 @@ async def main():
     await client.connect()
     
     if not await client.is_user_authorized():
-        print("❌ خطأ: الجلسة غير صالحة!")
+        print("❌ جلسة غير صالحة")
         return
     
     me = await client.get_me()
-    print(f"✅ متصل بـ: {me.first_name} (@{me.username})")
+    print(f"✅ متصل بـ: {me.first_name}")
     
     # الحصول على القناة
     try:
         channel = await client.get_entity("${{ github.event.inputs.channel_link }}")
         print(f"📢 القناة: {channel.title}")
     except Exception as e:
-        print(f"❌ خطأ: لا يمكن الوصول للقناة: {e}")
+        print(f"❌ خطأ في القناة: {e}")
         return
     
     # إرسال الصورة
-    print("🖼️ جاري إرسال الصورة...")
+    print("🖼️ إرسال الصورة...")
     try:
         await client.send_file(
             channel,
             "poster.jpg",
-            caption="🎬 ${{ github.event.inputs.movie_name }}",
-            parse_mode="html"
+            caption="🎬 ${{ github.event.inputs.movie_name }}"
         )
         print("✅ تم إرسال الصورة")
     except Exception as e:
-        print(f"❌ خطأ في إرسال الصورة: {e}")
+        print(f"❌ خطأ في الصورة: {e}")
     
     # إرسال الفيديو
-    print("🎥 جاري إرسال الفيديو...")
+    print("🎥 إرسال الفيديو...")
     try:
         video_size = os.path.getsize("video.mp4") / (1024 * 1024)
         caption = f"🎥 ${{ github.event.inputs.movie_name }}\\n✅ فيلم كامل\\n📊 الحجم: {video_size:.2f} MB"
@@ -104,20 +98,18 @@ async def main():
             channel,
             "video.mp4",
             caption=caption,
-            parse_mode="html",
             supports_streaming=True
         )
         print("✅ تم إرسال الفيديو")
     except Exception as e:
-        print(f"❌ خطأ في إرسال الفيديو: {e}")
+        print(f"❌ خطأ في الفيديو: {e}")
     
-    # إنهاء
     await client.disconnect()
-    print("🎉 تم الانتهاء بنجاح!")
+    print("🎉 تم الانتهاء!")
 
 asyncio.run(main())
-'
+EOF
         
-        # تنظيف الملفات
+        # تنظيف
         rm -f poster.jpg video.mp4
-        echo "🏁 تم تنظيف الملفات المؤقتة"
+        echo "🏁 تم التنظيف"
