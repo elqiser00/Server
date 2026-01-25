@@ -3,7 +3,7 @@ import asyncio, os, subprocess, sys, logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
         
-from telethon import TelegramClient, types
+from telethon import TelegramClient
 from telethon.sessions import StringSession
         
 async def download_file(url, out):
@@ -41,7 +41,7 @@ async def main():
     try:
         # قراءة المتغيرات
         API_ID = int(os.environ['TELEGRAM_API_ID'])
-        API_HASH = os.environ['TELEGRAM_API_HASH'])
+        API_HASH = os.environ['TELEGRAM_API_HASH']
         SESSION = os.environ['TELEGRAM_SESSION_STRING']
         CHANNEL = os.environ['CHANNEL_LINK']
         MOVIE = os.environ['MOVIE_NAME']
@@ -78,39 +78,26 @@ async def main():
         # الحصول على القناة
         channel = await client.get_entity(CHANNEL)
         logger.info(f"📢 القناة: {channel.title}")
-                
-        # رفع الملفات
-        logger.info("⬆️ رفع الصورة...")
-        photo = await client.upload_file("poster.jpg")
-                
-        logger.info("⬆️ رفع الفيديو...")
-        video = await client.upload_file("video.mp4")
-                
-        # **الحل الصحيح:** استخدام send_file بدلاً من send_message مع media
-        logger.info("📤 إرسال الرسالة...")
         
-        # الطريقة 1: إرسال كل ملف على حدة
-        caption = f"🎬 {MOVIE}\n✅ فيلم كامل"
+        # **الحل: إرسال الملفات بشكل منفصل**
         
         # إرسال الصورة أولاً
+        logger.info("🖼️ إرسال الصورة...")
         await client.send_file(
-            channel,
-            photo,
-            caption=caption,
+            entity=channel,
+            file="poster.jpg",
+            caption=f"🎬 {MOVIE}",
             parse_mode='html'
         )
         
         # إرسال الفيديو ثانياً
+        logger.info("🎥 إرسال الفيديو...")
         await client.send_file(
-            channel,
-            video,
-            caption=caption,
-            attributes=[types.DocumentAttributeVideo(
-                supports_streaming=True,
-                duration=0,
-                w=0,
-                h=0
-            )]
+            entity=channel,
+            file="video.mp4",
+            caption=f"🎥 {MOVIE}\n✅ فيلم كامل\n📊 الحجم: {os.path.getsize('video.mp4')/1024/1024:.2f} MB",
+            parse_mode='html',
+            supports_streaming=True
         )
         
         logger.info("✅ تم الرفع بنجاح!")
@@ -120,6 +107,8 @@ async def main():
         # تنظيف
         os.remove("poster.jpg")
         os.remove("video.mp4")
+        
+        logger.info("🏁 العملية اكتملت!")
                 
     except Exception as e:
         logger.error(f"❌ خطأ: {e}")
