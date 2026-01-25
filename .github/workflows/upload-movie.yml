@@ -45,7 +45,7 @@ jobs:
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
       run: |
-        python3 << "EOF"
+        cat > upload_script.py << 'EOF'
 import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -110,6 +110,8 @@ async def main():
 asyncio.run(main())
 EOF
         
+        python3 upload_script.py
+        
         # تنظيف
-        rm -f poster.jpg video.mp4
+        rm -f poster.jpg video.mp4 upload_script.py
         echo "🏁 تم التنظيف"
