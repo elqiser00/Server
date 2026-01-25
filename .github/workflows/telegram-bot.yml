@@ -43,7 +43,7 @@ jobs:
         API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         SESSION: ${{ secrets.TELEGRAM_SESSION_STRING }}
       run: |
-        python3 -c "
+        python3 -c '
 import asyncio, os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -51,40 +51,40 @@ from telethon.sessions import StringSession
 async def upload():
     # Connect to Telegram
     client = TelegramClient(
-        StringSession(os.environ['SESSION']),
-        int(os.environ['API_ID']),
-        os.environ['API_HASH']
+        StringSession(os.environ["SESSION"]),
+        int(os.environ["API_ID"]),
+        os.environ["API_HASH"]
     )
     
     await client.connect()
     
     if not await client.is_user_authorized():
-        print('ERROR: Invalid session')
+        print("ERROR: Invalid session")
         return
     
-    print('SUCCESS: Connected to Telegram')
+    print("SUCCESS: Connected to Telegram")
     
     # Get channel
-    channel = await client.get_entity('${{ github.event.inputs.channel }}')
-    print(f'Channel: {channel.title}')
+    channel = await client.get_entity("${{ github.event.inputs.channel }}")
+    print(f"Channel: {channel.title}")
     
     # Send poster
-    print('Sending poster...')
-    await client.send_file(channel, 'poster.jpg', caption='🎬 ${{ github.event.inputs.movie }}')
-    print('Poster sent')
+    print("Sending poster...")
+    await client.send_file(channel, "poster.jpg", caption="🎬 ${{ github.event.inputs.movie }}")
+    print("Poster sent")
     
     # Send video
-    print('Sending video...')
-    video_size = os.path.getsize('video.mp4') / (1024 * 1024)
-    caption = f'🎥 ${{ github.event.inputs.movie }}\n✅ Complete Movie\n📊 Size: {video_size:.2f} MB'
-    await client.send_file(channel, 'video.mp4', caption=caption, supports_streaming=True)
-    print('Video sent')
+    print("Sending video...")
+    video_size = os.path.getsize("video.mp4") / (1024 * 1024)
+    caption = f"🎥 ${{ github.event.inputs.movie }}\\n✅ Complete Movie\\n📊 Size: {video_size:.2f} MB"
+    await client.send_file(channel, "video.mp4", caption=caption, supports_streaming=True)
+    print("Video sent")
     
     await client.disconnect()
-    print('DONE: Upload completed')
+    print("DONE: Upload completed")
 
 asyncio.run(upload())
-"
+'
 
     - name: Cleanup
       run: |
