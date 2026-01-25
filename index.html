@@ -37,7 +37,11 @@
         input { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 2px solid #415a77; border-radius: 10px; color: white; }
         .btn { padding: 15px 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); color: white; border: none; border-radius: 10px; font-size: 1.1rem; cursor: pointer; width: 100%; margin-top: 20px; }
         .btn:hover { background: linear-gradient(135deg, #0096c7, #005f8a); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .logs { background: rgba(0,0,0,0.5); border-radius: 10px; padding: 20px; max-height: 300px; overflow-y: auto; margin-top: 20px; font-family: monospace; }
+        .success { color: #4caf50; }
+        .error { color: #ff4d6d; }
+        .info { color: #4cc9f0; }
     </style>
 </head>
 <body>
@@ -56,51 +60,105 @@
         
         <form id="uploadForm">
             <div class="form-group">
-                <label for="inviteLink">🔗 رابط دعوة القناة</label>
-                <input type="text" id="inviteLink" value="https://t.me/+VvLRMffUCXNlNjRk" required>
+                <label for="channelLink">🔗 رابط القناة</label>
+                <input type="text" id="channelLink" value="https://t.me/+VvLRMffUCXNlNjRk" required>
+                <small style="color: #4cc9f0;">يجب أن يكون رابط القناة كاملاً</small>
             </div>
             
             <div class="form-group">
-                <label for="contentName">📝 اسم الفيلم</label>
-                <input type="text" id="contentName" value="Truth & Treason 2025" required>
+                <label for="movieName">📝 اسم الفيلم</label>
+                <input type="text" id="movieName" value="Truth & Treason 2025" required>
             </div>
             
             <div class="form-group">
-                <label for="imageUrl">🖼️ رابط صورة الغلاف</label>
-                <input type="url" id="imageUrl" value="https://img.downet.net/uploads/U8xQf.webp" required>
+                <label for="posterUrl">🖼️ رابط البوستر (صورة)</label>
+                <input type="url" id="posterUrl" value="https://img.downet.net/uploads/U8xQf.webp" required>
                 <small style="color: #4cc9f0;">سترفع على اليسار</small>
             </div>
             
             <div class="form-group">
-                <label for="videoUrl">🎥 رابط الفيديو (.mp4)</label>
+                <label for="videoUrl">🎥 رابط الفيديو المباشر (.mp4)</label>
                 <input type="url" id="videoUrl" placeholder="https://example.com/video.mp4" required>
-                <small style="color: #ff4d6d;">سترفع على اليمين</small>
+                <small style="color: #ff4d6d;">يجب أن يكون رابط فيديو مباشر - ستظهر على اليمين</small>
             </div>
             
             <button type="submit" class="btn" id="submitBtn">
-                <i class="fas fa-film"></i> رفع مع عرض جانبي
+                <i class="fas fa-film"></i> رفع الفيلم إلى التليجرام
             </button>
         </form>
         
         <div class="logs" id="logContainer">
-            <div>🚀 جاهز للرفع مع عرض جانبي</div>
-            <div>📸 الصورة ← | الفيديو →</div>
+            <div class="info">🚀 جاهز للرفع مع عرض جانبي</div>
+            <div class="info">📸 الصورة ← | الفيديو →</div>
         </div>
     </div>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script>
+        const GITHUB_TOKEN = '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'; // استبدل هذا بـ token حقيقي
+        const REPO_OWNER = 'elqiser00';
+        const REPO_NAME = 'Server';
+        const WORKFLOW_ID = 'upload_movie.yml'; // اسم ملف الـ workflow
+        
         function addLog(msg, type = 'info') {
             const container = document.getElementById('logContainer');
             const entry = document.createElement('div');
-            entry.textContent = `• ${msg}`;
-            entry.style.color = type === 'error' ? '#ff4d6d' : type === 'success' ? '#4caf50' : '#4cc9f0';
+            entry.textContent = `• ${new Date().toLocaleTimeString()} - ${msg}`;
+            entry.className = type;
             container.appendChild(entry);
             container.scrollTop = container.scrollHeight;
         }
         
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        async function triggerGitHubAction(formData) {
+            try {
+                addLog('🔗 جاري تشغيل GitHub Action...', 'info');
+                
+                const response = await fetch(
+                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ref: 'main', // الفرع
+                            inputs: {
+                                channel_link: formData.channel_link,
+                                movie_name: formData.movie_name,
+                                poster_url: formData.poster_url,
+                                video_url: formData.video_url
+                            }
+                        })
+                    }
+                );
+                
+                if (response.ok) {
+                    addLog('✅ تم تشغيل الـ Action بنجاح!', 'success');
+                    addLog('📊 جاري رفع الملفات إلى التليجرام...', 'info');
+                    
+                    // فتح صفحة Actions للمتابعة
+                    setTimeout(() => {
+                        window.open(`https://github.com/${REPO_OWNER}/${REPO_NAME}/actions`, '_blank');
+                        addLog('🔍 افتح صفحة Actions لمتابعة العملية', 'info');
+                    }, 2000);
+                    
+                    return true;
+                } else {
+                    const errorText = await response.text();
+                    addLog(`❌ خطأ من GitHub: ${errorText}`, 'error');
+                    return false;
+                }
+                
+            } catch (error) {
+                addLog(`❌ خطأ في الشبكة: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const btn = document.getElementById('submitBtn');
@@ -108,22 +166,47 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
             
             const formData = {
-                invite_link: document.getElementById('inviteLink').value,
-                content_name: document.getElementById('contentName').value,
-                image_url: document.getElementById('imageUrl').value,
-                video_url: document.getElementById('videoUrl').value
+                channel_link: document.getElementById('channelLink').value.trim(),
+                movie_name: document.getElementById('movieName').value.trim(),
+                poster_url: document.getElementById('posterUrl').value.trim(),
+                video_url: document.getElementById('videoUrl').value.trim()
             };
             
-            addLog('🎬 بدء رفع الفيلم...');
-            addLog('📸 الصورة ستظهر على اليسار');
-            addLog('🎥 الفيديو سيظهر على اليمين');
+            // تفريغ السجلات
+            document.getElementById('logContainer').innerHTML = '';
             
-            setTimeout(() => {
-                window.open('https://github.com/elqiser00/Server/actions', '_blank');
-                addLog('✅ افتح صفحة Actions لتشغيل الرفع', 'success');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-film"></i> رفع مع عرض جانبي';
-            }, 2000);
+            addLog('🎬 بدء رفع الفيلم...', 'info');
+            addLog(`📝 الاسم: ${formData.movie_name}`, 'info');
+            addLog(`📢 القناة: ${formData.channel_link}`, 'info');
+            addLog('📸 الصورة ستظهر على اليسار', 'info');
+            addLog('🎥 الفيديو سيظهر على اليمين', 'info');
+            
+            // تشغيل الـ GitHub Action
+            const success = await triggerGitHubAction(formData);
+            
+            if (!success) {
+                addLog('⚠️ افتح صفحة Actions يدوياً واضغط على Run workflow', 'info');
+                window.open('https://github.com/elqiser00/Server/actions/workflows/upload_movie.yml', '_blank');
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-film"></i> رفع فيلم جديد';
+        });
+        
+        // تحقق من الروابط
+        document.getElementById('videoUrl').addEventListener('blur', function() {
+            const url = this.value;
+            if (url && !url.includes('.mp4')) {
+                addLog('⚠️ تأكد أن رابط الفيديو ينتهي بـ .mp4', 'error');
+            }
+        });
+        
+        // مثال لتحميل الصورة للمعاينة
+        document.getElementById('posterUrl').addEventListener('blur', function() {
+            const img = document.querySelector('.layout-preview img');
+            if (this.value) {
+                img.src = this.value;
+            }
         });
     </script>
 </body>
