@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_url:
-        description: 'رابط القناة (مثال: @channel أو +123456789 أو https://t.me/channel)'
+        description: 'رابط القناة'
         required: true
         type: string
       media_type:
@@ -16,7 +16,7 @@ on:
           - أفلام
           - مسلسلات
       logo_url:
-        description: 'رابط صورة الشعار (اختياري)'
+        description: 'رابط الشعار'
         required: false
         type: string
       video_paths:
@@ -24,12 +24,9 @@ on:
         required: true
         type: string
       caption:
-        description: 'النص التوضيحي (اختياري)'
+        description: 'الوصف'
         required: false
         type: string
-
-env:
-  PYTHONUNBUFFERED: "1"
 
 jobs:
   upload:
@@ -44,113 +41,41 @@ jobs:
       with:
         python-version: '3.10'
         
-    - name: 📦 تثبيت المتطلبات
+    - name: 📦 تثبيت المكتبات
       run: |
-        python -m pip install --upgrade pip
-        pip install telethon==1.34.0
-        pip install aiohttp==3.9.1
-        pip install python-dotenv==1.0.0
+        pip install telethon aiohttp
         
-    - name: 🗂️ إنشاء مجلدات
+    - name: 🧪 اختبار الإعدادات
+      env:
+        TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+        TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
+        TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
       run: |
-        mkdir -p sessions downloads
+        echo "🔍 اختبار الإعدادات..."
+        echo "API_ID: ${#TELEGRAM_API_ID} حرف"
+        echo "API_HASH: ${#TELEGRAM_API_HASH} حرف"
+        echo "PHONE: $TELEGRAM_PHONE"
+        echo "SESSION: ${#TELEGRAM_SESSION_STRING} حرف"
         
-    - name: 🔧 التحقق من السريتس
-      run: |
-        echo "🔐 التحقق من الأسرار المطلوبة..."
-        echo "API_ID: ${{ secrets.TELEGRAM_API_ID != '' && '✅' || '❌' }}"
-        echo "API_HASH: ${{ secrets.TELEGRAM_API_HASH != '' && '✅' || '❌' }}"
-        echo "PHONE: ${{ secrets.TELEGRAM_PHONE != '' && '✅' || '❌' }}"
-        echo "SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING != '' && '✅' || '❌' }}"
-        
-        if [ -z "${{ secrets.TELEGRAM_API_ID }}" ] || [ -z "${{ secrets.TELEGRAM_API_HASH }}" ] || [ -z "${{ secrets.TELEGRAM_PHONE }}" ]; then
-          echo "❌ أسرار GitHub غير مكتملة!"
-          echo "💡 تأكد من إضافة: TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE"
+        if [ -z "$TELEGRAM_API_ID" ] || [ -z "$TELEGRAM_API_HASH" ] || [ -z "$TELEGRAM_PHONE" ]; then
+          echo "❌ بيانات التليجرام ناقصة"
           exit 1
         fi
         
-    - name: 🚀 رفع الملفات
+    - name: 🚀 تشغيل الرفع
       env:
-        # الأسرار المطلوبة
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
         TELEGRAM_PASSWORD: ${{ secrets.TELEGRAM_PASSWORD || '' }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING || '' }}
         
-        # مدخلات المستخدم
         INPUT_CHANNEL_URL: ${{ inputs.channel_url }}
         INPUT_MEDIA_TYPE: ${{ inputs.media_type }}
         INPUT_LOGO_URL: ${{ inputs.logo_url }}
         INPUT_VIDEO_PATHS: ${{ inputs.video_paths }}
         INPUT_CAPTION: ${{ inputs.caption }}
       run: |
-        echo "╔═══════════════════════════════════════════════════╗"
-        echo "║      🚀 TELEGRAM MEDIA UPLOADER v4.0             ║"
-        echo "╚═══════════════════════════════════════════════════╝"
-        echo ""
-        echo "📢 القناة: ${{ inputs.channel_url }}"
-        echo "🎬 النوع: ${{ inputs.media_type }}"
-        echo "🖼️  الشعار: ${{ inputs.logo_url || 'لا يوجد' }}"
-        echo "📝 الوصف: ${{ inputs.caption || 'لا يوجد' }}"
-        
-        # حساب عدد الملفات
-        FILE_COUNT=$(echo '${{ inputs.video_paths }}' | tr ',' '\n' | wc -l)
-        echo "📁 عدد الملفات: $FILE_COUNT"
-        echo ""
-        echo "================================================="
-        
-        # تشغيل البرنامج
+        echo "🚀 بدء الرفع..."
         python main.py
-        
-        EXIT_CODE=$?
-        
-        echo ""
-        echo "================================================="
-        echo "رمز الخروج: $EXIT_CODE"
-        
-        if [ $EXIT_CODE -eq 0 ]; then
-          echo "✅ تم بنجاح!"
-        else
-          echo "❌ فشلت العملية"
-        fi
-        
-        exit $EXIT_CODE
-        
-    - name: 📁 حفظ السجلات
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: uploader-logs
-        path: |
-          uploader.log
-          sessions/
-        retention-days: 7
-        
-    - name: 📊 عرض النتيجة
-      if: always()
-      run: |
-        echo "================================================="
-        echo "📅 $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "================================================="
-        
-        if [ "${{ job.status }}" = "success" ]; then
-          echo "🎉 تم رفع الملفات بنجاح!"
-        else
-          echo "❌ فشلت عملية الرفع"
-          echo ""
-          
-          if [ -f uploader.log ]; then
-            echo "📄 آخر 10 أسطر من السجلات:"
-            echo "----------------------------------------"
-            tail -10 uploader.log || echo "⚠️  لا يمكن قراءة السجلات"
-            echo "----------------------------------------"
-          fi
-          
-          echo ""
-          echo "🔍 استكشاف الأخطاء:"
-          echo "1. تحقق من صحة الأسرار في GitHub Secrets"
-          echo "2. تأكد من TELEGRAM_SESSION_STRING"
-          echo "3. جرب تسجيل الدخول محلياً أولاً"
-          echo "4. تحقق من رابط القناة والملفات"
-        fi
