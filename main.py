@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Telegram Media Uploader - النسخة النهائية
-كل الأسرار من GitHub Secrets
+Telegram Media Uploader - النسخة المعدلة
+مع إصلاح البحث عن القناة
 """
 
 import os
 import sys
 import asyncio
 import logging
-import tempfile
 from pathlib import Path
 import urllib.parse
 import ssl
@@ -88,12 +87,9 @@ class TelegramUploader:
         logger.info(f"   🗝️  سلسلة الجلسة: {'✓' if self.session_string else '✗'}")
         
         # التحقق من الضروريات
-        if not self.api_id or not self.api_hash or not self.phone:
+        if not self.api_id or not self.api_hash:
             logger.error("❌ بيانات التليجرام الأساسية مفقودة!")
             sys.exit(1)
-        
-        if not self.session_string:
-            logger.warning("⚠️  سلسلة الجلسة مفقودة، قد يحتاج البرنامج لتسجيل الدخول")
     
     def load_inputs(self):
         """تحميل مدخلات الـ workflow"""
@@ -135,7 +131,7 @@ class TelegramUploader:
         try:
             logger.info("🔗 جاري الاتصال بالتليجرام...")
             
-            # الطريقة 1: استخدام StringSession إذا كانت السلسلة صالحة
+            # استخدام StringSession
             if self.session_string and self.session_string.startswith('1'):
                 try:
                     session = StringSession(self.session_string)
@@ -153,85 +149,111 @@ class TelegramUploader:
                     # التحقق من الجلسة
                     if await self.client.is_user_authorized():
                         me = await self.client.get_me()
-                        logger.info(f"✅ تم الاتصال كـ: {me.first_name}")
+                        logger.info(f"✅ تم الاتصال كـ: {me.first_name} (@{me.username})")
                         return True
-                    else:
-                        logger.warning("⚠️  الجلسة غير مفعلة")
                 except Exception as e:
-                    logger.warning(f"⚠️  سلسلة الجلسة غير صالحة: {str(e)}")
-            
-            # الطريقة 2: محاولة باستخدام كلمة المرور
-            logger.info("🔄 محاولة الاتصال باستخدام كلمة المرور...")
-            
-            self.client = TelegramClient(
-                session='github_actions_session',
-                api_id=int(self.api_id),
-                api_hash=self.api_hash
-            )
-            
-            await self.client.connect()
-            
-            if not await self.client.is_user_authorized():
-                if self.password:
-                    try:
-                        await self.client.sign_in(self.phone, self.password)
-                        logger.info("✅ تم تسجيل الدخول بكلمة المرور")
-                    except Exception as e:
-                        logger.error(f"❌ فشل تسجيل الدخول: {str(e)}")
-                        return False
-                else:
-                    logger.error("❌ لا توجد وسيلة لتسجيل الدخول")
-                    logger.error("💡 تأكد من:")
-                    logger.error("   1. صحة سلسلة الجلسة TELEGRAM_SESSION_STRING")
-                    logger.error("   2. أو إضافة كلمة المرور TELEGRAM_PASSWORD")
+                    logger.error(f"❌ خطأ في الاتصال: {str(e)}")
                     return False
             
-            return True
+            logger.error("❌ سلسلة الجلسة غير صالحة أو مفقودة")
+            return False
             
         except Exception as e:
             logger.error(f"❌ خطأ في الاتصال: {str(e)}")
             return False
     
     async def get_channel(self):
-        """الحصول على كيان القناة"""
+        """الحصول على كيان القناة - طريقة محسنة"""
         try:
             logger.info(f"🔍 جاري البحث عن القناة...")
+            logger.info(f"   الرابط المدخل: {self.channel_url}")
             
             # تنظيف رابط القناة
-            channel_id = self.channel_url
+            channel_input = self.channel_url.strip()
             
-            # إزالة https://t.me/
-            if 't.me/' in channel_id:
-                channel_id = channel_id.split('t.me/')[-1]
+            # محاولة مباشرة أولاً
+            try:
+                self.channel = await self.client.get_entity(channel_input)
+                logger.info(f"✅ تم العثور على القناة: {self.channel.title}")
+                return True
+            except Exception as e:
+                logger.debug(f"   المحاولة الأولى فشلت: {str(e)}")
             
-            # إزالة @ أو +
-            if channel_id.startswith(('@', '+')):
-                channel_id = channel_id[1:]
+            # تحليل الرابط
+            if 't.me/' in channel_input:
+                # رابط مباشر
+                parts = channel_input.split('t.me/')
+                if len(parts) > 1:
+                    channel_id = parts[-1]
+                    
+                    # إزالة أي إشارات
+                    if channel_id.startswith('@'):
+                        channel_id = channel_id[1:]
+                    
+                    # تجربة الروابط المختلفة
+                    attempts = [
+                        channel_id,
+                        f"@{channel_id}",
+                        f"https://t.me/{channel_id}",
+                        f"t.me/{channel_id}"
+                    ]
+                    
+                    if channel_id.startswith('+'):
+                        attempts.append(channel_id[1:])
+                    
+                    for attempt in attempts:
+                        try:
+                            logger.info(f"   محاولة: {attempt}")
+                            self.channel = await self.client.get_entity(attempt)
+                            logger.info(f"✅ تم العثور على القناة: {self.channel.title}")
+                            return True
+                        except Exception as e:
+                            logger.debug(f"      فشلت: {str(e)}")
+                            continue
             
-            logger.info(f"   المعرف: {channel_id}")
-            
-            # محاولات مختلفة للعثور على القناة
-            attempts = [
-                channel_id,
-                f"@{channel_id}",
-                f"https://t.me/{channel_id}",
-                f"t.me/{channel_id}"
-            ]
-            
-            for attempt in attempts:
+            # إذا كان رابط قناة خاصة برابط دعوة
+            if channel_input.startswith('https://t.me/+'):
+                # رابط دعوة
+                invite_hash = channel_input.replace('https://t.me/+', '')
+                logger.info(f"   رابط دعوة، الهاش: {invite_hash}")
+                
                 try:
-                    self.channel = await self.client.get_entity(attempt)
-                    logger.info(f"✅ تم العثور على القناة: {self.channel.title}")
+                    # محاولة الانضمام للقناة أولاً
+                    result = await self.client(ImportChatInviteRequest(invite_hash))
+                    self.channel = await self.client.get_entity(result.chats[0])
+                    logger.info(f"✅ تم الانضمام للقناة: {self.channel.title}")
                     return True
                 except Exception as e:
-                    logger.debug(f"   محاولة فاشلة: {attempt}")
-                    continue
+                    logger.error(f"❌ لا يمكن الانضمام للقناة: {str(e)}")
+            
+            # محاولة البحث في الدردشات
+            logger.info("🔎 جاري البحث في الدردشات...")
+            try:
+                dialogs = await self.client.get_dialogs(limit=100)
+                for dialog in dialogs:
+                    if dialog.is_channel or dialog.is_group:
+                        # تحقق من الرابط
+                        if hasattr(dialog.entity, 'username'):
+                            username = f"@{dialog.entity.username}"
+                            if username in channel_input or channel_input in username:
+                                self.channel = dialog.entity
+                                logger.info(f"✅ تم العثور في الدردشات: {dialog.title}")
+                                return True
+                        
+                        # تحقق من العنوان
+                        if dialog.title and channel_input in dialog.title:
+                            self.channel = dialog.entity
+                            logger.info(f"✅ تم العثور بالاسم: {dialog.title}")
+                            return True
+            except Exception as e:
+                logger.warning(f"⚠️  خطأ في البحث في الدردشات: {str(e)}")
             
             logger.error("❌ لم أتمكن من العثور على القناة")
-            logger.error("💡 تأكد من:")
-            logger.error("   1. صحة رابط القناة")
-            logger.error("   2. أن الحساب عضو في القناة")
-            logger.error("   3. أن الحساب لديه صلاحية النشر")
+            logger.error("💡 الحلول:")
+            logger.error("   1. تأكد أن الرابط صحيح")
+            logger.error("   2. تأكد أن الحساب عضو في القناة")
+            logger.error("   3. إذا كانت القناة خاصة، أضف الحساب يدوياً")
+            logger.error("   4. جرب رابط @username بدلاً من +invite_link")
             return False
             
         except Exception as e:
@@ -261,7 +283,7 @@ class TelegramUploader:
             if '.' not in filename:
                 filename += '.mp4'
             
-            return filename[:100]  # تقصير إذا كان طويلاً
+            return filename[:100]
             
         except:
             import time
@@ -276,12 +298,11 @@ class TelegramUploader:
         
         try:
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
-            timeout = aiohttp.ClientTimeout(total=3600)  # ساعة كاملة
+            timeout = aiohttp.ClientTimeout(total=3600)
             
             headers = {
                 'User-Agent': 'Mozilla/5.0 (GitHub Actions Telegram Uploader)',
-                'Accept': '*/*',
-                'Referer': 'https://github.com'
+                'Accept': '*/*'
             }
             
             async with aiohttp.ClientSession(
@@ -298,7 +319,7 @@ class TelegramUploader:
                             downloaded = 0
                             last_progress = 0
                             
-                            async for chunk in response.content.iter_chunked(1024*1024):  # 1MB chunks
+                            async for chunk in response.content.iter_chunked(1024*1024):
                                 if chunk:
                                     f.write(chunk)
                                     downloaded += len(chunk)
@@ -342,7 +363,7 @@ class TelegramUploader:
             
             logger.info(f"⬆️  جاري رفع: {filename} ({size_mb:.1f} MB)")
             
-            # رفع الملف مع عرض التقدم للملفات الكبيرة
+            # رفع الملف
             file = await self.client.upload_file(
                 filepath,
                 progress_callback=self.upload_progress if size_mb > 10 else None
@@ -547,7 +568,6 @@ class TelegramUploader:
                         file.unlink()
                     except:
                         pass
-                logger.info("🧹 تم تنظيف الملفات المؤقتة")
         except:
             pass
     
@@ -567,6 +587,10 @@ class TelegramUploader:
             
             # الحصول على القناة
             if not await self.get_channel():
+                # محاولة البديل: استخدام اسم المستخدم مباشرة
+                logger.info("🔄 محاولة استخدام اسم مستخدم مباشر...")
+                # إذا كان الرابط https://t.me/+VvLRMffUCXNlNjRk
+                # جرب استخدام @username الخاص بالقناة بدلاً من رابط الدعوة
                 return False
             
             # تحميل الشعار
