@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       channel_url:
-        description: 'رابط القناة على التليجرام (مثال: @channel_name أو https://t.me/channel_name أو +xxxxxxxxxx)'
+        description: 'رابط القناة (مثال: @channel أو https://t.me/channel أو +123456789)'
         required: true
         type: string
       media_type:
-        description: 'نوع المحتوى المراد رفعه'
+        description: 'نوع المحتوى'
         required: true
         default: 'أفلام'
         type: choice
@@ -16,15 +16,15 @@ on:
           - أفلام
           - مسلسلات
       logo_url:
-        description: 'رابط صورة الشعار (لوغو) - اختياري'
+        description: 'رابط صورة الشعار (اختياري)'
         required: false
         type: string
       video_paths:
-        description: 'روابط أو مسارات ملفات الفيديو (مفصولة بفواصل) - مثال: https://example.com/video1.mp4,https://example.com/video2.mp4'
+        description: 'روابط الفيديو (مفصولة بفواصل)'
         required: true
         type: string
       caption:
-        description: 'النص التوضيحي (الكبشر) - اختياري'
+        description: 'النص التوضيحي (اختياري)'
         required: false
         type: string
 
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 التحقق من المستودع
+    - name: 📥 استعراض الكود
       uses: actions/checkout@v3
       
     - name: 🐍 إعداد Python
@@ -43,46 +43,46 @@ jobs:
         
     - name: 📦 تثبيت المتطلبات
       run: |
-        python -m pip install --upgrade pip
         pip install telethon==1.34.0
         pip install aiohttp==3.9.1
         
-    - name: 🚀 رفع الملفات إلى التليجرام
+    - name: 🚀 رفع الملفات
       env:
+        # الأسرار
         TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
         TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
         TELEGRAM_PASSWORD: ${{ secrets.TELEGRAM_PASSWORD }}
         TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-        # تمرير مدخلات workflow
+        # المدخلات
         INPUT_CHANNEL_URL: ${{ inputs.channel_url }}
         INPUT_MEDIA_TYPE: ${{ inputs.media_type }}
         INPUT_LOGO_URL: ${{ inputs.logo_url }}
         INPUT_VIDEO_PATHS: ${{ inputs.video_paths }}
         INPUT_CAPTION: ${{ inputs.caption }}
       run: |
-        echo "🎬 بدء عملية الرفع..."
-        echo "=" * 40
-        echo "نوع المحتوى: ${{ inputs.media_type }}"
-        echo "رابط القناة: ${{ inputs.channel_url }}"
-        echo "عدد الروابط: $(echo '${{ inputs.video_paths }}' | tr ',' '\n' | wc -l)"
-        echo "=" * 40
-        python upload_media.py
+        echo "========================================"
+        echo "🚀 بدء رفع الملفات إلى التليجرام"
+        echo "========================================"
+        echo "القناة: ${{ inputs.channel_url }}"
+        echo "النوع: ${{ inputs.media_type }}"
+        echo ""
+        python main.py
         
-    - name: 📊 نتيجة الرفع
+    - name: 📊 النتيجة
       if: always()
       run: |
-        echo "=" * 40
+        echo "========================================"
         if [ "${{ job.status }}" = "success" ]; then
-          echo "✅ تم رفع الملفات بنجاح!"
+          echo "✅ تم بنجاح!"
         else
-          echo "❌ فشل رفع الملفات"
-          echo "🔍 تحقق من:"
-          echo "  1. صحة الأسرار في GitHub Secrets"
-          echo "  2. صحة رابط القناة"
-          echo "  3. أن الروابط نشطة وقابلة للتحميل"
-          echo "  4. أن الحساب مفعل على التليجرام"
+          echo "❌ فشلت العملية"
+          echo ""
+          echo "🔍 الأسباب المحتملة:"
+          echo "1. تأكد من صحة الأسرار في GitHub Secrets"
+          echo "2. تحقق من رابط القناة"
+          echo "3. تأكد أن روابط الفيديو نشطة"
+          echo "4. تحقق من تفعيل حساب التليجرام"
         fi
-        echo "=" * 40
+        echo "========================================"
