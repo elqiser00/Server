@@ -6,54 +6,87 @@ Script for GitHub Actions - Telegram Media Uploader
 import os
 import sys
 import asyncio
+import json
 from pathlib import Path
-import main  # استيراد الكود الرئيسي
 
-async def run_upload():
-    # قراءة المدخلات من GitHub Actions
-    channel_url = os.getenv('INPUT_CHANNEL_URL')
-    media_type = os.getenv('INPUT_MEDIA_TYPE', 'أفلام')
-    caption = os.getenv('INPUT_CAPTION', '')
-    logo_url = os.getenv('INPUT_LOGO_URL')
-    
-    # مسارات الملفات
-    video_paths = []
-    if os.getenv('INPUT_VIDEO_PATHS'):
-        video_paths = [p.strip() for p in os.getenv('INPUT_VIDEO_PATHS').split(',')]
-    
-    # التحقق من البيانات
-    if not channel_url:
-        print("❌ CHANNEL_URL مطلوب!")
-        sys.exit(1)
+# إضافة المسار للوحدات
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from main import TelegramMediaUploader
+
+async def run_github_actions():
+    """تشغيل الرفع في GitHub Actions"""
+    print("🚀 بدء رفع الملفات إلى التليجرام عبر GitHub Actions...")
     
     # إنشاء مثيل الرفع
-    uploader = main.TelegramMediaUploader()
-    uploader.channel_url = channel_url
-    uploader.media_type = media_type
-    uploader.caption = caption
+    uploader = TelegramMediaUploader()
     
-    # التحقق من البيانات
-    if not uploader.validate_data():
-        sys.exit(1)
+    # قراءة المدخلات من GitHub Actions
+    uploader.is_github_actions = True
     
-    # إعداد العميل
-    if not await uploader.setup_client():
-        sys.exit(1)
+    # الحصول على معلومات الملفات من workflow
+    logo_url = os.getenv('INPUT_LOGO_URL', '')
+    media_type = os.getenv('INPUT_MEDIA_TYPE', 'أفلام')
+    caption = os.getenv('INPUT_CAPTION', '')
     
-    try:
-        # معالجة الملفات
-        if media_type == "أفلام" and video_paths:
+    # الحصول على مسارات الملفات
+    video_paths_input = os.getenv('INPUT_VIDEO_PATHS', '')
+    if video_paths_input:
+        # تقسيم المسارات وفلترتها
+        video_paths = []
+        for path in video_paths_input.split(','):
+            path = path.strip()
+            if path:
+                video_paths.append(path)
+        
+        print(f"📁 عدد الملفات: {len(video_paths)}")
+        
+        # التحقق من وجود الملفات
+        valid_paths = []
+        for path in video_paths:
+            p = Path(path)
+            if p.exists():
+                valid_paths.append(p)
+                print(f"✓ {p.name}")
+            else:
+                print(f"✗ {path} (غير موجود)")
+        
+        if not valid_paths:
+            print("❌ لا توجد ملفات صالحة للرفع")
+            sys.exit(1)
+        
+        # التحقق من البيانات
+        if not uploader.validate_data():
+            sys.exit(1)
+        
+        # إعداد العميل
+        if not await uploader.setup_client():
+            sys.exit(1)
+        
+        try:
+            # تحميل الشعار
             logo_path = await uploader.download_logo(logo_url) if logo_url else None
-            video_path = Path(video_paths[0])
-            await uploader.send_movie_post(video_path, logo_path)
-        elif media_type == "مسلسلات" and video_paths:
-            logo_path = await uploader.download_logo(logo_url) if logo_url else None
-            video_files = [Path(p) for p in video_paths]
-            await uploader.send_series_post(video_files[:10], logo_path)
-    finally:
-        # إغلاق العميل
-        if uploader.client:
-            await uploader.client.disconnect()
+            
+            # معالجة الملفات حسب النوع
+            if media_type == "أفلام":
+                uploader.media_type = "أفلام"
+                uploader.caption = caption
+                await uploader.send_movie_post(valid_paths[0], logo_path)
+            else:  # مسلسلات
+                uploader.media_type = "مسلسلات"
+                uploader.caption = caption
+                await uploader.send_series_post(valid_paths[:10], logo_path)
+                
+        except Exception as e:
+            print(f"❌ خطأ أثناء الرفع: {str(e)}")
+            sys.exit(1)
+        finally:
+            # إغلاق العميل
+            if uploader.client:
+                await uploader.client.disconnect()
+    else:
+        print("❌ لم يتم توفير مسارات الملفات")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    asyncio.run(run_upload())
+    asyncio.run(run_github_actions())
