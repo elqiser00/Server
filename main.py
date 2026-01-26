@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Telegram Media Uploader - النسخة النهائية
+Telegram Media Uploader - إرسال الصورة والفيديو معاً
 """
 
 import os
@@ -14,11 +14,12 @@ import ssl
 import aiohttp
 from telethon import TelegramClient
 from telethon.errors import RPCError, FloodWaitError
-from telethon.tl.types import InputMediaUploadedDocument
+from telethon.tl.types import InputMediaUploadedPhoto, InputMediaUploadedDocument
 from telethon.tl.functions.messages import SendMultiMediaRequest
 from telethon.tl.types import InputSingleMedia
 from telethon.tl.types import DocumentAttributeVideo
 from telethon.sessions import StringSession
+from telethon.tl.functions.messages import ImportChatInviteRequest
 import mimetypes
 import re
 
@@ -102,6 +103,9 @@ class TelegramUploader:
         self.logo_url = os.getenv('INPUT_LOGO_URL', '').strip()
         self.caption = os.getenv('INPUT_CAPTION', '').strip()
         
+        # تحرير اسم الفيديو
+        self.video_name_override = os.getenv('INPUT_VIDEO_NAME', '').strip()
+        
         # تحميل روابط الفيديو
         video_paths_input = os.getenv('INPUT_VIDEO_PATHS', '').strip()
         self.video_urls = []
@@ -117,6 +121,7 @@ class TelegramUploader:
         logger.info(f"   🎬 النوع: {self.media_type}")
         logger.info(f"   🖼️  الشعار: {self.logo_url if self.logo_url else 'لا يوجد'}")
         logger.info(f"   📝 الوصف: {self.caption if self.caption else 'لا يوجد'}")
+        logger.info(f"   ✏️  اسم الفيديو: {self.video_name_override if self.video_name_override else 'تلقائي'}")
         logger.info(f"   📁 الفيديوهات: {len(self.video_urls)}")
         
         # التحقق من المدخلات الأساسية
@@ -173,22 +178,22 @@ class TelegramUploader:
                 self.channel = await self.client.get_entity(channel_input)
                 logger.info(f"✅ تم العثور على القناة: {self.channel.title}")
                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"   المحاولة الأولى فشلت: {str(e)}")
             
-            # إذا كان رابط دعوة
+            # رابط دعوة
             if channel_input.startswith('https://t.me/+'):
                 invite_hash = channel_input.replace('https://t.me/+', '')
-                logger.info(f"   رابط دعوة: {invite_hash}")
+                logger.info(f"   📨 رابط دعوة: {invite_hash}")
                 
                 try:
-                    from telethon.tl.functions.messages import ImportChatInviteRequest
                     result = await self.client(ImportChatInviteRequest(invite_hash))
                     self.channel = await self.client.get_entity(result.chats[0])
                     logger.info(f"✅ تم الانضمام للقناة: {self.channel.title}")
                     return True
                 except Exception as e:
                     logger.error(f"❌ لا يمكن الانضمام: {str(e)}")
+                    return False
             
             logger.error("❌ لم أتمكن من العثور على القناة")
             return False
@@ -197,13 +202,33 @@ class TelegramUploader:
             logger.error(f"❌ خطأ في البحث عن القناة: {str(e)}")
             return False
     
-    def extract_filename(self, url: str) -> str:
-        """استخراج اسم ملف من الرابط"""
+    def extract_filename(self, url: str, is_logo: bool = False) -> str:
+        """استخراج اسم ملف"""
+        if is_logo:
+            # للشعار: اسم ثابت
+            if self.logo_url and '.' in self.logo_url:
+                ext = '.' + self.logo_url.split('.')[-1].split('?')[0]
+                ext = re.sub(r'[^a-zA-Z0-9.]', '', ext)
+                if len(ext) > 10:
+                    ext = '.jpg'
+            else:
+                ext = '.jpg'
+            return f"Logo{ext}"
+        
+        # للفيديو: اسم مخصص أو من الرابط
+        if self.video_name_override:
+            filename = self.video_name_override
+            if '.' not in filename:
+                filename += '.mp4'
+            return filename
+        
+        # استخراج من الرابط
         try:
             parsed = urllib.parse.urlparse(url)
             filename = os.path.basename(parsed.path)
             
             if not filename or filename == '/':
+                import hashlib
                 domain = parsed.netloc.replace('.', '_')[:20]
                 timestamp = int(time.time())
                 hash_str = hashlib.md5(url.encode()).hexdigest()[:6]
@@ -221,12 +246,15 @@ class TelegramUploader:
             import hashlib
             return f"video_{int(time.time())}.mp4"
     
-    async def download_file(self, url: str) -> Path:
+    async def download_file(self, url: str, is_logo: bool = False) -> Path:
         """تحميل ملف"""
-        filename = self.extract_filename(url)
+        filename = self.extract_filename(url, is_logo)
         filepath = self.downloads_dir / filename
         
-        logger.info(f"📥 جاري تحميل: {filename}")
+        if is_logo:
+            logger.info(f"🎨 جاري تحميل الشعار...")
+        else:
+            logger.info(f"📥 جاري تحميل: {filename}")
         
         try:
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
@@ -250,7 +278,7 @@ class TelegramUploader:
                                     f.write(chunk)
                                     downloaded += len(chunk)
                                     
-                                    if total_size > 0:
+                                    if total_size > 0 and not is_logo:
                                         progress = (downloaded / total_size) * 100
                                         if int(progress) >= last_progress + 10:
                                             mb_downloaded = downloaded / 1024 / 1024
@@ -261,9 +289,13 @@ class TelegramUploader:
                         if filepath.exists():
                             file_size = filepath.stat().st_size
                             if file_size > 0:
-                                size_mb = file_size / 1024 / 1024
-                                self.stats['videos_downloaded'] += 1
-                                logger.info(f"✅ تم التحميل: {filename} ({size_mb:.1f} MB)")
+                                if is_logo:
+                                    size_kb = file_size / 1024
+                                    logger.info(f"✅ تم تحميل الشعار: {filename} ({size_kb:.1f} KB)")
+                                else:
+                                    size_mb = file_size / 1024 / 1024
+                                    self.stats['videos_downloaded'] += 1
+                                    logger.info(f"✅ تم التحميل: {filename} ({size_mb:.1f} MB)")
                                 return filepath
                             else:
                                 filepath.unlink()
@@ -274,19 +306,38 @@ class TelegramUploader:
                         raise Exception(f"HTTP {response.status}")
                         
         except Exception as e:
-            logger.error(f"❌ فشل تحميل {filename}: {str(e)}")
+            if is_logo:
+                logger.error(f"❌ فشل تحميل الشعار: {str(e)}")
+            else:
+                logger.error(f"❌ فشل تحميل {filename}: {str(e)}")
             if filepath.exists():
                 filepath.unlink(missing_ok=True)
             raise
     
-    async def upload_file(self, filepath: Path, is_video: bool = True):
-        """رفع ملف"""
+    async def upload_photo(self, filepath: Path):
+        """رفع صورة"""
         try:
             filename = filepath.name
             size_mb = filepath.stat().st_size / 1024 / 1024
             
-            logger.info(f"⬆️  جاري رفع: {filename} ({size_mb:.1f} MB)")
-            logger.info(f"⏱️  قد يستغرق: {(size_mb / 2) / 60:.1f} دقيقة تقريباً")
+            logger.info(f"🖼️  جاري رفع الصورة: {filename} ({size_mb:.1f} MB)")
+            
+            file = await self.client.upload_file(filepath)
+            
+            return InputMediaUploadedPhoto(file=file)
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في رفع الصورة: {str(e)}")
+            raise
+    
+    async def upload_video(self, filepath: Path):
+        """رفع فيديو"""
+        try:
+            filename = filepath.name
+            size_mb = filepath.stat().st_size / 1024 / 1024
+            
+            logger.info(f"🎬 جاري رفع الفيديو: {filename} ({size_mb:.1f} MB)")
+            logger.info(f"⏱️  قد يستغرق: {(size_mb / 2) / 60:.1f} دقيقة")
             
             self.upload_start_time = time.time()
             
@@ -295,23 +346,18 @@ class TelegramUploader:
                 progress_callback=self.upload_progress
             )
             
-            if is_video:
-                attributes = [DocumentAttributeVideo(
-                    duration=0,
-                    w=0,
-                    h=0,
-                    supports_streaming=True
-                )]
-                mime_type = "video/mp4"
-            else:
-                attributes = []
-                mime_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
+            attributes = [DocumentAttributeVideo(
+                duration=0,
+                w=0,
+                h=0,
+                supports_streaming=True
+            )]
             
             self.stats['videos_uploaded'] += 1
             
             return InputMediaUploadedDocument(
                 file=file,
-                mime_type=mime_type,
+                mime_type="video/mp4",
                 attributes=attributes,
                 force_file=False
             )
@@ -320,14 +366,14 @@ class TelegramUploader:
             wait_time = e.seconds
             logger.warning(f"⏳ FloodWait: انتظر {wait_time} ثانية")
             await asyncio.sleep(wait_time)
-            return await self.upload_file(filepath, is_video)
+            return await self.upload_video(filepath)
         except Exception as e:
             self.stats['errors'] += 1
-            logger.error(f"❌ خطأ في رفع {filename}: {str(e)}")
+            logger.error(f"❌ خطأ في رفع الفيديو: {str(e)}")
             raise
     
     def upload_progress(self, current: int, total: int):
-        """عرض تقدم الرفع"""
+        """عرض تقدم رفع الفيديو"""
         percent = (current / total) * 100
         elapsed = time.time() - self.upload_start_time
         
@@ -341,67 +387,28 @@ class TelegramUploader:
                 logger.info(f"   📤 {int(percent)}% ({mb_current:.1f}/{mb_total:.1f} MB)")
                 logger.info(f"   🚀 السرعة: {speed:.1f} MB/ث - ⏱️  المتبقي: {remaining:.0f} ثانية")
     
-    async def download_logo(self) -> Path:
-        """تحميل الشعار"""
-        if not self.logo_url:
-            return None
-        
-        logger.info("🎨 جاري تحميل الشعار...")
-        
+    async def send_movie_with_logo(self, video_path: Path, logo_path: Path = None):
+        """إرسال فيلم مع صورة في نفس البوست"""
         try:
-            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
-            
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(self.logo_url) as response:
-                    if response.status == 200:
-                        content_type = response.headers.get('Content-Type', '')
-                        if 'image/' in content_type:
-                            ext = mimetypes.guess_extension(content_type) or '.jpg'
-                        else:
-                            if '.' in self.logo_url:
-                                ext = '.' + self.logo_url.split('.')[-1].split('?')[0]
-                                if ext.lower() not in ['.jpg', '.jpeg', '.png', '.webp']:
-                                    ext = '.jpg'
-                            else:
-                                ext = '.jpg'
-                        
-                        logo_path = self.downloads_dir / f"logo{ext}"
-                        
-                        with open(logo_path, 'wb') as f:
-                            f.write(await response.read())
-                        
-                        size_kb = logo_path.stat().st_size / 1024
-                        logger.info(f"✅ تم تحميل الشعار ({size_kb:.1f} KB)")
-                        return logo_path
-                    else:
-                        logger.warning(f"⚠️  فشل تحميل الشعار")
-                        return None
-        except Exception as e:
-            logger.warning(f"⚠️  خطأ في تحميل الشعار: {str(e)}")
-            return None
-    
-    async def send_movie(self, video_path: Path, logo_path: Path = None):
-        """إرسال فيلم"""
-        try:
-            logger.info("🎬 جاري إرسال الفيلم...")
+            logger.info("🎬 جاري إرسال الفيلم مع الصورة...")
             
             media_items = []
             
-            # إضافة الصورة
+            # إضافة الصورة أولاً
             if logo_path and logo_path.exists():
                 try:
-                    logo_media = await self.upload_file(logo_path, is_video=False)
+                    photo_media = await self.upload_photo(logo_path)
                     media_items.append(InputSingleMedia(
-                        media=logo_media,
+                        media=photo_media,
                         message="",
                         entities=None
                     ))
-                    logger.info("🖼️  تم إضافة الصورة")
+                    logger.info("✅ تم رفع الصورة")
                 except Exception as e:
                     logger.warning(f"⚠️  فشل رفع الصورة: {str(e)}")
             
-            # رفع الفيديو
-            video_media = await self.upload_file(video_path, is_video=True)
+            # إضافة الفيديو مع الوصف
+            video_media = await self.upload_video(video_path)
             
             media_items.append(InputSingleMedia(
                 media=video_media,
@@ -409,19 +416,66 @@ class TelegramUploader:
                 entities=None
             ))
             
-            # إرسال الوسائط - بدون reply_to_msg_id
-            result = await self.client(SendMultiMediaRequest(
-                peer=self.channel,
-                multi_media=media_items,
-                silent=None,
-                schedule_date=None
-            ))
+            # إرسال الوسائط معاً
+            logger.info(f"📤 جاري إرسال {len(media_items)} وسائط معاً...")
             
-            logger.info(f"✅ تم نشر الفيلم بنجاح! (Message ID: {result.id})")
+            # الطريقة الصحيحة لإرسال الوسائط المتعددة
+            try:
+                # المحاولة الأولى: مع جميع الخيارات
+                result = await self.client(SendMultiMediaRequest(
+                    peer=self.channel,
+                    multi_media=media_items,
+                    silent=None,
+                    schedule_date=None
+                ))
+            except TypeError:
+                # المحاولة الثانية: بدون خيارات إضافية
+                result = await self.client(SendMultiMediaRequest(
+                    peer=self.channel,
+                    multi_media=media_items
+                ))
+            
+            logger.info(f"✅ تم نشر البوست بنجاح! (Message ID: {result.id})")
             
         except Exception as e:
-            logger.error(f"❌ خطأ في إرسال الفيلم: {str(e)}")
+            logger.error(f"❌ خطأ في إرسال البوست: {str(e)}")
+            # محاولة إرسال كل وسيط منفرداً
+            await self.send_separately(video_path, logo_path)
+    
+    async def send_separately(self, video_path: Path, logo_path: Path = None):
+        """إرسال الصورة والفيديو منفصلين إذا فشلت المحاولة الأولى"""
+        try:
+            logger.info("🔄 محاولة الإرسال المنفصل...")
+            
+            # إرسال الصورة أولاً
+            if logo_path and logo_path.exists():
+                await self.client.send_file(
+                    self.channel,
+                    logo_path,
+                    caption=""
+                )
+                logger.info("✅ تم إرسال الصورة")
+                await asyncio.sleep(1)
+            
+            # إرسال الفيديو مع الوصف
+            await self.client.send_file(
+                self.channel,
+                video_path,
+                caption=self.caption if self.caption else "",
+                supports_streaming=True
+            )
+            logger.info("✅ تم إرسال الفيديو")
+            
+        except Exception as e:
+            logger.error(f"❌ فشل الإرسال المنفصل أيضاً: {str(e)}")
             raise
+    
+    async def download_logo(self) -> Path:
+        """تحميل الشعار"""
+        if not self.logo_url:
+            return None
+        
+        return await self.download_file(self.logo_url, is_logo=True)
     
     async def send_series(self, video_paths: list, logo_path: Path = None):
         """إرسال مسلسل"""
@@ -438,39 +492,31 @@ class TelegramUploader:
                 logger.info("✅ تم إرسال الصورة")
                 await asyncio.sleep(1)
             
-            # الحلقات في مجموعات
+            # إرسال الحلقات في مجموعات
             for i in range(0, len(video_paths), 10):
                 batch = video_paths[i:i+10]
-                media_items = []
                 
                 logger.info(f"   📦 مجموعة {i//10 + 1}: {len(batch)} حلقة")
                 
                 for j, video_path in enumerate(batch):
-                    video_media = await self.upload_file(video_path, is_video=True)
-                    
-                    episode_num = i + j + 1
-                    episode_caption = f"الحلقة {episode_num}"
-                    
-                    media_items.append(InputSingleMedia(
-                        media=video_media,
-                        message=episode_caption,
-                        entities=None
-                    ))
+                    try:
+                        await self.client.send_file(
+                            self.channel,
+                            video_path,
+                            caption=f"الحلقة {i + j + 1}",
+                            supports_streaming=True
+                        )
+                        logger.info(f"   ✅ تم إرسال الحلقة {i + j + 1}")
+                        
+                        # انتظار بين الحلقات
+                        if j < len(batch) - 1:
+                            await asyncio.sleep(1)
+                    except Exception as e:
+                        logger.error(f"   ❌ فشل إرسال الحلقة {i + j + 1}: {str(e)}")
                 
-                # إرسال الدفعة
-                if media_items:
-                    await self.client(SendMultiMediaRequest(
-                        peer=self.channel,
-                        multi_media=media_items,
-                        silent=None,
-                        schedule_date=None
-                    ))
-                    
-                    logger.info(f"   ✅ تم نشر {len(media_items)} حلقة")
-                    
-                    # انتظار
-                    if i + 10 < len(video_paths):
-                        await asyncio.sleep(2)
+                # انتظار بين المجموعات
+                if i + 10 < len(video_paths):
+                    await asyncio.sleep(2)
             
             logger.info(f"🎉 تم نشر جميع الحلقات ({len(video_paths)} حلقة)")
             
@@ -531,9 +577,9 @@ class TelegramUploader:
             
             logger.info(f"✅ جاهز للرفع: {len(video_paths)} ملف")
             
-            # الإرسال
+            # الإرسال حسب النوع
             if self.media_type == "أفلام":
-                await self.send_movie(video_paths[0], logo_path)
+                await self.send_movie_with_logo(video_paths[0], logo_path)
             elif self.media_type == "مسلسلات":
                 await self.send_series(video_paths, logo_path)
             else:
@@ -577,7 +623,5 @@ async def main():
         return 1
 
 if __name__ == "__main__":
-    # إضافة hashlib للاستيراد
-    import hashlib
     exit_code = asyncio.run(main())
     sys.exit(exit_code)
