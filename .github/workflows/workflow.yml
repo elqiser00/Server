@@ -1,0 +1,58 @@
+name: Upload Media to Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel_url:
+        description: 'رابط القناة (مثال: @channel_name)'
+        required: true
+      media_type:
+        description: 'نوع المحتوى'
+        required: true
+        default: 'أفلام'
+        type: choice
+        options:
+        - أفلام
+        - مسلسلات
+      logo_url:
+        description: 'رابط الشعار (اختياري)'
+        required: false
+      video_paths:
+        description: 'مسارات ملفات الفيديو (مفصولة بفواصل)'
+        required: true
+      caption:
+        description: 'الكبشر (الوصف)'
+        required: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: التحقق من الكود
+      uses: actions/checkout@v3
+      
+    - name: إعداد Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: تثبيت المتطلبات
+      run: |
+        pip install telethon==1.34.0
+        pip install aiohttp==3.9.1
+        
+    - name: رفع الملفات إلى التليجرام
+      env:
+        TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+        TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
+        TELEGRAM_PASSWORD: ${{ secrets.TELEGRAM_PASSWORD }}
+        TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+        REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        INPUT_CHANNEL_URL: ${{ github.event.inputs.channel_url }}
+        INPUT_MEDIA_TYPE: ${{ github.event.inputs.media_type }}
+        INPUT_LOGO_URL: ${{ github.event.inputs.logo_url }}
+        INPUT_VIDEO_PATHS: ${{ github.event.inputs.video_paths }}
+        INPUT_CAPTION: ${{ github.event.inputs.caption }}
+      run: python upload_media.py
