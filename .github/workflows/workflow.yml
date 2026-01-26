@@ -29,7 +29,6 @@ on:
         type: string
 
 env:
-  # المتغيرات الثابتة
   PYTHONUNBUFFERED: "1"
 
 jobs:
@@ -38,7 +37,7 @@ jobs:
     
     steps:
     - name: 📥 استعراض الكود
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: 🐍 إعداد Python
       uses: actions/setup-python@v4
@@ -47,7 +46,7 @@ jobs:
         
     - name: 📦 تثبيت المتطلبات
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install telethon==1.34.0
         pip install aiohttp==3.9.1
         pip install python-dotenv==1.0.0
@@ -55,6 +54,13 @@ jobs:
     - name: 🗂️ إنشاء مجلدات
       run: |
         mkdir -p sessions downloads
+        
+    - name: 🔧 إعداد الجلسة (إذا لم تكن موجودة)
+      if: ${{ !secrets.TELEGRAM_SESSION_STRING }}
+      run: |
+        echo "⚠️  TELEGRAM_SESSION_STRING غير موجود"
+        echo "سيتم محاولة إنشاء جلسة جديدة..."
+        echo "قد تحتاج لتسجيل الدخول يدوياً"
         
     - name: 🚀 رفع الملفات
       env:
@@ -75,31 +81,59 @@ jobs:
         echo "========================================"
         echo "🚀 بدء رفع الملفات إلى التليجرام"
         echo "========================================"
+        echo "القناة: ${{ inputs.channel_url }}"
+        echo "النوع: ${{ inputs.media_type }}"
+        echo "الشعار: ${{ inputs.logo_url || 'لا يوجد' }}"
+        echo "الوصف: ${{ inputs.caption || 'لا يوجد' }}"
+        echo "الملفات: $(echo '${{ inputs.video_paths }}' | tr ',' '\n' | wc -l)"
+        echo "========================================"
+        
+        # تشغيل البرنامج
         python main.py
+        
+    - name: 📁 حفظ السجلات
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: uploader-logs
+        path: |
+          uploader.log
+          sessions/
+          downloads/
+        retention-days: 7
         
     - name: 📊 نتيجة الرفع
       if: always()
       run: |
         echo "========================================"
-        if [ "${{ job.status }}" = "success" ]; then
-          echo "✅ تم بنجاح!"
-        else
-          echo "❌ فشلت العملية"
-          echo ""
-          echo "🔍 استكشاف الأخطاء:"
-          echo "1. تحقق من ملف uploader.log للتفاصيل"
-          echo "2. تأكد من صحة الأسرار في GitHub Secrets"
-          echo "3. تأكد من أن الحساب مفعل وله صلاحية النشر"
-          echo "4. جرب إعداد الجلسة محلياً أولاً"
-        fi
+        echo "📅 $(date '+%Y-%m-%d %H:%M:%S')"
         echo "========================================"
         
-    - name: 📁 حفظ السجلات
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: upload-logs
-        path: |
-          uploader.log
-          sessions/
-        retention-days: 7
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ تم رفع الملفات بنجاح!"
+        else
+          echo "❌ فشلت عملية الرفع"
+          echo ""
+          echo "🔍 استكشاف الأخطاء:"
+          echo ""
+          
+          # قراءة آخر 20 سطر من السجل
+          if [ -f uploader.log ]; then
+            echo "📄 آخر 20 سطر من السجلات:"
+            echo "----------------------------------------"
+            tail -20 uploader.log || echo "⚠️  لا يمكن قراءة السجلات"
+            echo "----------------------------------------"
+          else
+            echo "⚠️  ملف السجلات غير موجود"
+          fi
+          
+          echo ""
+          echo "💡 الحلول المقترحة:"
+          echo "1. تأكد من صحة الأسرار في GitHub Secrets"
+          echo "2. استخدم TELEGRAM_SESSION_STRING لتجنب تسجيل الدخول"
+          echo "3. تأكد أن الحساب عضو في القناة"
+          echo "4. جرب الروابط في المتصفح للتأكد من صحتها"
+          echo "5. تحقق من أن الحساب مفعل وله صلاحية النشر"
+        fi
+        
+        echo "========================================"
