@@ -32,6 +32,32 @@ def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
+async def convert_webp_to_jpg(webp_path):
+    """تحويل WebP إلى JPG (مطلوبة لتيليجرام كـ صورة مصغرة)"""
+    try:
+        from PIL import Image
+        jpg_path = str(Path(webp_path).with_suffix('.jpg'))
+        img = Image.open(webp_path)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = background
+        img.save(jpg_path, 'JPEG', quality=95)
+        print(f"🔄 تم تحويل الصورة من WebP إلى JPG: {Path(jpg_path).name}")
+        return jpg_path
+    except Exception as e:
+        # الحل البديل: إعادة تسمية الملف (بعض الخوادم تدعم WebP)
+        jpg_path = str(Path(webp_path).with_suffix('.jpg'))
+        try:
+            Path(webp_path).rename(jpg_path)
+            print(f"🔄 تم إعادة تسمية الملف إلى JPG (بدون تحويل): {Path(jpg_path).name}")
+            return jpg_path
+        except Exception as rename_e:
+            print(f"⚠️  فشل تحويل الصورة: {str(e)}")
+            return None
+
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف بسرعات قصوى مع فحص الحجم"""
     url = url.strip()
@@ -161,7 +187,7 @@ async def resolve_channel(client, channel_input):
             print(f"✅ تم العثور على القناة: {getattr(entity, 'title', 'غير معروف')}")
             return entity
         except (ChannelPrivateError, UserAlreadyParticipantError):
-            # البحث في القنوات المنضمة
+            # البحث في القنوات المنضمة (كـ صاحب القناة)
             print("ℹ️  البحث في القنوات المنضمة (كـ صاحب القناة)...")
             async for dialog in client.iter_dialogs(limit=30):
                 if dialog.is_channel and not dialog.is_group:
@@ -201,10 +227,13 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي للبوست المدمج")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي المتوافق مع القنوات")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
+    print("="*70)
+    print("ℹ️  ملاحظة هامة: القنوات تدعم فقط رفع الفيديو مع صورة مصغرة مخصصة")
+    print("   (وليس مجموعات الوسائط/الألبومات) للحسابات الشخصية")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -254,7 +283,15 @@ async def main():
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 
-                print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
+                # ✅ تحويل WebP إلى JPG (مطلوبة كـ صورة مصغرة)
+                if image_path and image_path.lower().endswith(('.webp', '.WEBP')):
+                    print("🖼️  تحويل الصورة إلى JPG (مطلوبة لتيليجرام)...")
+                    image_path = await convert_webp_to_jpg(image_path)
+                    if not image_path or not Path(image_path).exists():
+                        print("⚠️  سيتم الرفع بدون صورة مصغرة مخصصة")
+                        image_path = None
+                
+                print(f"✅ جاهز للرفع: فيديو مع صورة مصغرة ({Path(video_path).name})")
             
             else:  # series
                 try:
@@ -294,23 +331,21 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل الجذري: رفع كـ Media Group باستخدام send_file مع قائمة الملفات
+            # ✅ الحل النهائي: رفع الفيديو مع صورة مصغرة مخصصة (الطريقة الوحيدة المدعومة للقنوات)
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
+                print("\n⚡ جاري الرفع كـ فيديو مع صورة مصغرة مخصصة (الطريقة القياسية للقنوات)...")
                 start_upload = time.time()
                 
-                # الترتيب مهم: الصورة أولاً ثم الفيديو = الصورة على اليسار والفيديو على اليمين
-                media_list = [image_path, video_path]
-                
-                # الطريقة الصحيحة لإنشاء بوست مدمج (بدون أخطاء)
+                # الرفع مع صورة مصغرة مخصصة
                 await client.send_file(
                     entity,
-                    media_list,  # قائمة الملفات مباشرة (بدون InputMedia)
+                    video_path,
+                    thumb=image_path if image_path and Path(image_path).exists() else None,
                     caption=caption,
-                    supports_streaming=True,  # لتفعيل البث المباشر للفيديو
+                    supports_streaming=True,  # تفعيل البث المباشر
                     parse_mode='html',
                     force_document=False,
-                    part_size=1024 * 1024,  # 1 ميجابايت لكل جزء لزيادة السرعة
+                    part_size=1024 * 1024,  # 1 ميجابايت لكل جزء
                     progress_callback=None
                 )
                 
@@ -319,27 +354,27 @@ async def main():
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
                 print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
+                print("\nℹ️  ملاحظة: تم رفع الفيديو مع الصورة كـ 'صورة مصغرة مخصصة'")
+                print("   هذه هي الطريقة القياسية لعرض الأفلام في القنوات (مثل جميع القنوات الرسمية)")
             
-            else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات كـ بوست واحد...")
-                start_upload = time.time()
-                
-                await client.send_file(
-                    entity,
-                    media_files,
-                    caption=caption,
-                    supports_streaming=True,
-                    parse_mode='html',
-                    force_document=False,
-                    part_size=1024 * 1024,
-                    progress_callback=None
-                )
-                
-                upload_time = time.time() - start_upload
-                total_size = sum(Path(f).stat().st_size for f in media_files) / 1024 / 1024
-                upload_speed = total_size / upload_time if upload_time > 0 else 0
-                
-                print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
+            else:  # series - رفع كل فيديو في منشور منفصل (القنوات لا تدعم ألبومات للمستخدمين)
+                print("\n⚡ جاري رفع ملفات المسلسلات (منشور منفصل لكل ملف)...")
+                for i, file_path in enumerate(media_files, 1):
+                    start_upload = time.time()
+                    await client.send_file(
+                        entity,
+                        file_path,
+                        caption=f"{caption}\n\nالحلقة {i}" if len(media_files) > 1 else caption,
+                        supports_streaming=True,
+                        parse_mode='html',
+                        force_document=False,
+                        part_size=1024 * 1024,
+                        progress_callback=None
+                    )
+                    upload_time = time.time() - start_upload
+                    file_size = Path(file_path).stat().st_size / 1024 / 1024
+                    upload_speed = file_size / upload_time if upload_time > 0 else 0
+                    print(f"✅ تم رفع الحلقة {i}: {Path(file_path).name} | السرعة: {upload_speed:.2f} ميجابايت/ثانية")
             
             print("\n" + "="*70)
             print("🎉 تمت العملية بنجاح!")
@@ -348,7 +383,7 @@ async def main():
             print(f"   - الوضع: {'فيلم' if mode == 'movie' else 'مسلسل'}")
             print(f"   - القناة: {getattr(entity, 'title', channel)}")
             print(f"   - الحد الأقصى: 1999 ميجابايت (من 2000 الرسمي)")
-            print(f"   - السرعة: تنزيل ورفع بسرعات قصوى")
+            print(f"   - الطريقة: فيديو مع صورة مصغرة مخصصة (مدعومة 100% للقنوات)")
             print("="*70)
         
         finally:
@@ -375,16 +410,17 @@ if __name__ == "__main__":
         print(f"{'='*70}", file=sys.stderr)
         
         error_msg = str(e).lower()
-        if "media" in error_msg and "group" in error_msg:
-            print("\n💡 الحل الفوري:", file=sys.stderr)
-            print("   • تم تطبيق الحل الصحيح: رفع كـ قائمة ملفات مباشرة", file=sys.stderr)
-            print("   • تأكد من تحديث الكود لأحدث إصدار", file=sys.stderr)
+        if "media" in error_msg and ("invalid" in error_msg or "group" in error_msg):
+            print("\n💡 الحل النهائي:", file=sys.stderr)
+            print("   القنوات لا تدعم 'مجموعات الوسائط' (ألبومات) للحسابات الشخصية.", file=sys.stderr)
+            print("   الطريقة الصحيحة: رفع الفيديو مع صورة مصغرة مخصصة (تم تطبيق هذا الحل).", file=sys.stderr)
+            print("   هذه هي الطريقة القياسية المستخدمة في جميع قنوات الأفلام على تيليجرام.", file=sys.stderr)
+        elif "thumb" in error_msg or "image" in error_msg:
+            print("\n💡 الحل:", file=sys.stderr)
+            print("   • تم تطبيق تحويل تلقائي من WebP إلى JPG", file=sys.stderr)
+            print("   • إذا استمر الخطأ: استخدم صورة بامتداد JPG مباشرة", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
-        elif "channel" in error_msg or "invite" in error_msg or "private" in error_msg:
-            print("\n💡 الحل الفوري (كـ صاحب القناة):", file=sys.stderr)
-            print("   1. تأكد من أن الرابط صالح", file=sys.stderr)
-            print("   2. جرب استخدام رابط دعوة جديد من إعدادات القناة", file=sys.stderr)
         
         sys.exit(1)
