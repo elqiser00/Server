@@ -1,4 +1,4 @@
-name: 📤 رفع محتوى على تيليجرام (الإصدار المحسن)
+name: 📤 رفع محتوى على تيليجرام - الإصدار النهائي مع تفاصيل الفيديو
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
           - series
       
       channel:
-        description: 'معرف القناة: @yourchannel أو رابط دعوة (مثل +Abc123) - يدعم كليهما!'
+        description: 'رابط القناة: @yourchannel أو رابط دعوة (مثل +Abc123)'
         required: true
         type: string
       
@@ -60,12 +60,18 @@ jobs:
       - name: 🛠️ إعداد البيئة
         uses: actions/checkout@v4
         
+      - name: ⚡ تثبيت ffmpeg (لعرض تفاصيل الفيديو: المدة والحجم)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+        
       - name: 🐍 تثبيت بايثون 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: 📦 تثبيت المكتبات
+      - name: 📦 تثبيت المكتبات المطلوبة
         run: |
           pip install --upgrade pip setuptools
           pip install telethon requests "pysocks>=1.6.8" "cryptography>=3.0"
@@ -86,7 +92,7 @@ jobs:
           fi
           echo "✅ تم التحقق من الأسرار بنجاح"
       
-      - name: 🚀 تشغيل سكريبت الرفع
+      - name: 🚀 تشغيل سكريبت الرفع (مع تفاصيل الفيديو)
         env:
           MODE: ${{ github.event.inputs.mode }}
           CHANNEL: ${{ github.event.inputs.channel }}
@@ -110,6 +116,7 @@ jobs:
           echo "🎉 تمت عملية الرفع بنجاح!"
           echo "الوضع: ${{ github.event.inputs.mode }}"
           echo "القناة: ${{ github.event.inputs.channel }}"
+          echo "التفاصيل: المدة والحجم ظاهرين في البوست"
           echo "=========================================="
       
       - name: ❌ فشل العملية
