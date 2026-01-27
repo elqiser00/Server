@@ -4,12 +4,14 @@ import sys
 import asyncio
 import tempfile
 import mimetypes
+import subprocess
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputMediaPhoto, InputMediaDocument
+from telethon.tl.types import DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -31,6 +33,30 @@ MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
+
+def get_video_info(file_path):
+    """استخراج معلومات الفيديو (المدة، العرض، الارتفاع) باستخدام ffprobe"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-show_entries', 'stream=width,height',
+            '-of', 'json',
+            file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise Exception(f"فشل استخراج معلومات الفيديو: {result.stderr}")
+        
+        data = json.loads(result.stdout)
+        duration = float(data['format']['duration'])
+        width = int(data['streams'][0]['width'])
+        height = int(data['streams'][0]['height'])
+        return duration, width, height
+    except Exception as e:
+        print(f"⚠️  فشل استخراج معلومات الفيديو: {str(e)}")
+        return 0, 1280, 720  # قيم افتراضية
 
 async def convert_webp_to_jpg(webp_path):
     """تحويل WebP إلى JPG (مطلوب لتيليجرام)"""
@@ -213,7 +239,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (الشكل المطلوب 100%)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تفاصيل الفيديو)")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -311,23 +337,37 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط باستخدام الطريقة الصحيحة
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط مع تفاصيل الفيديو
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
+                print("\n⚡ جاري الرفع كـ بوست مدمج مع تفاصيل الفيديو...")
                 start_upload = time.time()
                 
-                # الترتيب مهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
-                media_list = [image_path, video_path]
+                # استخراج معلومات الفيديو (المدة، العرض، الارتفاع)
+                print("🔄 استخراج معلومات الفيديو...")
+                duration, width, height = get_video_info(video_path)
                 
-                # الطريقة الصحيحة لإنشاء مجموعة وسائط (مثل تيليجرام ديسكتوب)
+                # إعداد مُحددات الفيديو
+                video_attributes = [
+                    DocumentAttributeVideo(
+                        duration=int(duration),
+                        w=width,
+                        h=height,
+                        round_message=False
+                    )
+                ]
+                
+                # رفع الفيديو كـ مستند مع تفاصيل الفيديو
+                print("🔄 رفع الفيديو مع تفاصيل المدة والحجم...")
                 await client.send_file(
                     entity,
-                    media_list,
+                    video_path,
+                    thumb=image_path if image_path and Path(image_path).exists() else None,
                     caption=caption,
-                    supports_streaming=True,  # تفعيل البث المباشر
+                    supports_streaming=True,
                     parse_mode='html',
-                    force_document=False,
-                    part_size=1024 * 1024,  # 1 ميجابايت لكل جزء
+                    force_document=True,  # ← المفتاح السري لعرض تفاصيل الملف
+                    attributes=video_attributes,
+                    part_size=1024 * 1024,
                     progress_callback=None
                 )
                 
@@ -336,22 +376,35 @@ async def main():
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
                 print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
-                print("\n🎉 النتيجة: بوست مدمج بالشكل المطلوب (مثل الصورة التي أرسلتها)")
+                print("\n🎉 النتيجة: فيديو مع تفاصيل المدة والحجم (مثل الصورة التي أرسلتها)")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
+                print("\n⚡ جاري رفع ملفات المسلسلات كـ مستندات مع تفاصيل الفيديو...")
                 start_upload = time.time()
                 
-                await client.send_file(
-                    entity,
-                    media_files,
-                    caption=caption,
-                    supports_streaming=True,
-                    parse_mode='html',
-                    force_document=False,
-                    part_size=1024 * 1024,
-                    progress_callback=None
-                )
+                for file_path in media_files:
+                    # استخراج معلومات الفيديو
+                    duration, width, height = get_video_info(file_path)
+                    attributes = [
+                        DocumentAttributeVideo(
+                            duration=int(duration),
+                            w=width,
+                            h=height,
+                            round_message=False
+                        )
+                    ]
+                    
+                    await client.send_file(
+                        entity,
+                        file_path,
+                        caption=caption,
+                        supports_streaming=True,
+                        parse_mode='html',
+                        force_document=True,
+                        attributes=attributes,
+                        part_size=1024 * 1024,
+                        progress_callback=None
+                    )
                 
                 upload_time = time.time() - start_upload
                 total_size = sum(Path(f).stat().st_size for f in media_files) / 1024 / 1024
@@ -365,7 +418,7 @@ async def main():
             print(f"📊 ملخص:")
             print(f"   - الوضع: {'فيلم' if mode == 'movie' else 'مسلسل'}")
             print(f"   - القناة: {getattr(entity, 'title', channel)}")
-            print(f"   - الشكل: صورة على اليسار + فيديو على اليمين في منشور واحد")
+            print(f"   - الشكل: فيديو مع تفاصيل المدة والحجم (مثل الصورة التي أرسلتها)")
             print(f"   - الحد الأقصى: 1999 ميجابايت (من 2000 الرسمي)")
             print("="*70)
         
@@ -395,8 +448,8 @@ if __name__ == "__main__":
         error_msg = str(e).lower()
         if "media" in error_msg and "group" in error_msg:
             print("\n💡 الحل النهائي:", file=sys.stderr)
-            print("   • تم تطبيق الطريقة الصحيحة: قائمة ملفات مباشرة لـ send_file", file=sys.stderr)
-            print("   • تأكد من أن الصورة بصيغة JPG (تم إضافة تحويل تلقائي)", file=sys.stderr)
+            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ مستند مع تفاصيل الفيديو", file=sys.stderr)
+            print("   • تأكد من تثبيت ffmpeg في بيئة جيتهاب", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
