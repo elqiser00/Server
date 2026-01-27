@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputMediaPhoto, InputMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -242,38 +241,24 @@ async def main():
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الصورة على اليسار + الفيديو على اليمين)
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الطريقة الصحيحة المدعومة)
             if mode == 'movie':
                 print("⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 
-                # رفع الملفات أولاً (الصورة ثم الفيديو)
-                print("🔄 رفع الصورة إلى تيليجرام...")
-                image_file = await client.upload_file(image_path)
+                # تحويل WebP تلقائياً إلى JPG (مطلوب لتيليجرام)
+                if image_path.lower().endswith('.webp'):
+                    jpg_path = str(Path(image_path).with_suffix('.jpg'))
+                    Path(image_path).rename(jpg_path)
+                    image_path = jpg_path
+                    print(f"🔄 تم تحويل امتداد الصورة من WebP إلى JPG: {Path(jpg_path).name}")
                 
-                print("🔄 رفع الفيديو إلى تيليجرام...")
-                video_file = await client.upload_file(video_path)
+                # الترتيب المهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
+                media_list = [image_path, video_path]
                 
-                # ✅ الإصلاح الجذري: استخدام `id` بدلاً من `media`
-                media = [
-                    InputMediaPhoto(id=image_file),  # ← الصحيح: استخدام `id`
-                    InputMediaDocument(
-                        id=video_file,  # ← الصحيح: استخدام `id`
-                        attributes=[
-                            DocumentAttributeFilename(file_name=Path(video_path).name),
-                            DocumentAttributeVideo(
-                                duration=0,  # سيتم استخراجه تلقائياً
-                                w=1280,
-                                h=720,
-                                supports_streaming=True
-                            )
-                        ]
-                    )
-                ]
-                
-                # إرسال المجموعة
+                # الطريقة الصحيحة لإنشاء مجموعة وسائط (بدون كلاسات معقدة)
                 await client.send_media_group(
                     entity,
-                    media,
+                    media_list,  # قائمة مسارات الملفات مباشرة
                     caption=caption,
                     parse_mode='html'
                 )
@@ -283,21 +268,12 @@ async def main():
             
             else:  # series
                 print("⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
-                media = []
-                for file_path in media_files:
-                    file = await client.upload_file(file_path)
-                    media.append(InputMediaDocument(
-                        id=file,
-                        attributes=[DocumentAttributeFilename(file_name=Path(file_path).name)]
-                    ))
-                
                 await client.send_media_group(
                     entity,
-                    media,
+                    media_files,
                     caption=caption,
                     parse_mode='html'
                 )
-                
                 print("\n✅ تم الرفع بنجاح!")
             
             print("\n" + "="*70)
