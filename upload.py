@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputMediaPhoto, InputMediaDocument, DocumentAttributeFilename
+from telethon.tl.types import InputMediaPhoto, InputMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -19,7 +19,7 @@ import requests
 import ssl
 import urllib3
 
-# تجاوز تحذيرات SSL (للاستخدام الآمن عند الحاجة)
+# تجاوز تحذيرات SSL تلقائياً
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ⚠️ الحد الرسمي لتيليجرام: 2000 ميجابايت
@@ -246,19 +246,27 @@ async def main():
             if mode == 'movie':
                 print("⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 
-                # رفع الملفات أولاً
+                # رفع الملفات أولاً (الصورة ثم الفيديو)
                 print("🔄 رفع الصورة إلى تيليجرام...")
                 image_file = await client.upload_file(image_path)
                 
                 print("🔄 رفع الفيديو إلى تيليجرام...")
                 video_file = await client.upload_file(video_path)
                 
-                # إنشاء مجموعة وسائط
+                # ✅ الإصلاح الجذري: استخدام `id` بدلاً من `media`
                 media = [
-                    InputMediaPhoto(media=image_file),
+                    InputMediaPhoto(id=image_file),  # ← الصحيح: استخدام `id`
                     InputMediaDocument(
-                        media=video_file,
-                        attributes=[DocumentAttributeFilename(file_name=Path(video_path).name)]
+                        id=video_file,  # ← الصحيح: استخدام `id`
+                        attributes=[
+                            DocumentAttributeFilename(file_name=Path(video_path).name),
+                            DocumentAttributeVideo(
+                                duration=0,  # سيتم استخراجه تلقائياً
+                                w=1280,
+                                h=720,
+                                supports_streaming=True
+                            )
+                        ]
                     )
                 ]
                 
@@ -267,8 +275,7 @@ async def main():
                     entity,
                     media,
                     caption=caption,
-                    parse_mode='html',
-                    supports_streaming=True
+                    parse_mode='html'
                 )
                 
                 print("\n✅ تم الرفع بنجاح!")
@@ -279,14 +286,16 @@ async def main():
                 media = []
                 for file_path in media_files:
                     file = await client.upload_file(file_path)
-                    media.append(InputMediaDocument(media=file))
+                    media.append(InputMediaDocument(
+                        id=file,
+                        attributes=[DocumentAttributeFilename(file_name=Path(file_path).name)]
+                    ))
                 
                 await client.send_media_group(
                     entity,
                     media,
                     caption=caption,
-                    parse_mode='html',
-                    supports_streaming=True
+                    parse_mode='html'
                 )
                 
                 print("\n✅ تم الرفع بنجاح!")
