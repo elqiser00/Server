@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.tl.types import InputMediaPhoto, InputMediaDocument
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -25,39 +25,13 @@ if os.getenv('SKIP_SSL_VERIFY', 'false').lower() == 'true':
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     ssl._create_default_https_context = ssl._create_unverified_context
 
-# ⚠️ الحد الرسمي لتيليجرام: 2000 ميجابايت (2 جيجابايت)
-# نستخدم 1999 ميجابايت كهامش أمان لتجنب فشل الرفع النهائي
+# ⚠️ الحد الرسمي لتيليجرام: 2000 ميجابايت
 MAX_VIDEO_SIZE_MB = 1999.0
 MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 
 def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
-
-async def convert_webp_to_jpg(webp_path):
-    """تحويل WebP إلى JPG باستخدام مكتبة Pillow (إذا متوفرة) أو عبر معالجة يدوية"""
-    try:
-        # محاولة استخدام Pillow إذا مثبتة
-        from PIL import Image
-        jpg_path = webp_path.replace('.webp', '.jpg').replace('.WEBP', '.jpg')
-        img = Image.open(webp_path)
-        if img.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-            img = background
-        img.save(jpg_path, 'JPEG', quality=95)
-        print(f"🔄 تم تحويل الصورة من WebP إلى JPG: {Path(jpg_path).name}")
-        return jpg_path
-    except Exception as e:
-        # الحل البديل: إعادة تسمية الملف (بعض خوادم تيليجرام تدعم WebP كـ thumbnail)
-        jpg_path = webp_path.replace('.webp', '.jpg').replace('.WEBP', '.jpg')
-        try:
-            Path(webp_path).rename(jpg_path)
-            print(f"🔄 تم إعادة تسمية WebP إلى JPG (بدون تحويل): {Path(jpg_path).name}")
-            return jpg_path
-        except:
-            print(f"⚠️  فشل تحويل الصورة إلى JPG - سيتم الرفع بدون صورة مصغرة")
-            return None
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف بسرعات قصوى مع فحص الحجم"""
@@ -140,7 +114,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 filepath.unlink(missing_ok=True)
                 raise Exception(
                     f"حجم الفيديو ({file_size_mb:.2f} ميجابايت) يتجاوز الحد المسموح (1999 ميجابايت).\n"
-                    f"الحد الرسمي لتيليجرام: 2000 ميجابايت. نستخدم 1999 كهامش أمان.\n"
                     f"الحل: قسّم الفيديو إلى أجزاء أصغر أو استخدم جودة أقل."
                 )
             print(f"✅ تم التنزيل: {filepath.name} ({file_size_mb:.2f} ميجابايت) | السرعة: {speed:.2f} ميجابايت/ثانية ✓")
@@ -152,7 +125,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     except requests.exceptions.SSLError:
         raise Exception(
             "خطأ شهادة SSL:\n"
-            "الموقع يستخدم شهادة غير موثوقة.\n"
+            "المosite يستخدم شهادة غير موثوقة.\n"
             "الحل: فعّل 'skip_ssl = true' في إعدادات الـ Workflow."
         )
     except Exception as e:
@@ -161,7 +134,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
         raise Exception(f"فشل التنزيل: {str(e)}")
 
 async def resolve_channel(client, channel_input):
-    """معالجة ذكية لجميع أنواع روابط القنوات (يدعم الروابط الكاملة والخاصة)"""
+    """معالجة ذكية لجميع أنواع روابط القنوات"""
     channel_input = channel_input.strip()
     
     # تنظيف الرابط
@@ -189,7 +162,7 @@ async def resolve_channel(client, channel_input):
             print(f"✅ تم العثور على القناة: {getattr(entity, 'title', 'غير معروف')}")
             return entity
         except (ChannelPrivateError, UserAlreadyParticipantError):
-            # البحث في القنوات المنضمة (كـ صاحب القناة، القناة ستظهر في القائمة)
+            # البحث في القنوات المنضمة
             print("ℹ️  البحث في القنوات المنضمة (كـ صاحب القناة)...")
             async for dialog in client.iter_dialogs(limit=30):
                 if dialog.is_channel and not dialog.is_group:
@@ -203,7 +176,7 @@ async def resolve_channel(client, channel_input):
                     except:
                         continue
             
-            # الحل الأخير: استخدام أول قناة خاصة في القائمة (كـ صاحب القناة، القناة ستكون في الأعلى)
+            # الحل الأخير: استخدام أول قناة خاصة في القائمة
             async for dialog in client.iter_dialogs(limit=10):
                 if dialog.is_channel and not dialog.is_group:
                     print(f"✅ تم اختيار القناة: {dialog.name} (كقناة افتراضية)")
@@ -232,10 +205,10 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي المُصحّح")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار المُعدّل للبوست المدمج")
     print("="*70)
-    print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى (بدون أخطاء)")
-    print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي لتيليجرام)")
+    print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى")
+    print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -259,16 +232,13 @@ async def main():
             StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
             int(os.getenv('TELEGRAM_API_ID')),
             os.getenv('TELEGRAM_API_HASH'),
-            # ⚠️ تمت إزالة: request_size, download_workers (غير مدعومة في هذا الإصدار)
-            flood_sleep_threshold=120  # للتعامل مع حدود السرعة
+            flood_sleep_threshold=120
         )
         await client.start()
         me = await client.get_me()
         print(f"✅ تم تسجيل الدخول كـ: {me.first_name} (@{me.username if me.username else 'لا يوجد يوزرنيم'})")
     except Exception as e:
-        raise Exception(f"فشل تسجيل الدخول: {str(e)}\n"
-                        "السبب الشائع: معلمات غير مدعومة في إصدار Telethon.\n"
-                        "الحل: تم إصلاح الكود - تأكد من استخدام أحدث إصدار.")
+        raise Exception(f"فشل تسجيل الدخول: {str(e)}")
     
     with tempfile.TemporaryDirectory() as tmp_dir:
         media_files = []
@@ -287,11 +257,6 @@ async def main():
                 print("\n🎬 معالجة وضع الأفلام...")
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
-                
-                # ✅ إصلاح الصورة المصغرة: تحويل WebP إلى JPG (مطلوبة لتيليجرام)
-                if image_path and image_path.lower().endswith('.webp'):
-                    print("🖼️  معالجة الصورة المصغرة (WebP → JPG)...")
-                    image_path = await convert_webp_to_jpg(image_path)
                 
                 print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
             
@@ -333,40 +298,28 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الرفع بسرعات قصوى (بدون معلمات خاطئة)
+            # ✅ الحل الجذري: رفع الصورة والفيديو في بوست واحد
             if mode == 'movie':
-                print("\n⚡ جاري الرفع بوضع السرعة القصوى (فيديو مع صورة مصغرة)...")
+                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة + فيديو)...")
                 start_upload = time.time()
                 
-                # محاولة الرفع مع الصورة المصغرة
-                try:
-                    await client.send_file(
-                        entity,
-                        video_path,
-                        thumb=image_path if image_path and Path(image_path).exists() else None,
-                        caption=caption,
-                        supports_streaming=True,
-                        force_document=False,
-                        parse_mode='html',
-                        part_size=1024 * 1024,  # 1 ميجابايت لكل جزء (لزيادة السرعة)
-                        progress_callback=None  # تعطيل مؤشر التقدم لتوفير الموارد
+                # إنشاء محتوى البوست المدمج
+                media = [
+                    InputMediaPhoto(file=image_path),
+                    InputMediaDocument(
+                        file=video_path,
+                        attributes=[DocumentAttributeFilename(file_name=f"{Path(video_path).stem}.mp4")]
                     )
-                except Exception as e:
-                    # محاولة الرفع بدون صورة مصغرة في حالة الفشل
-                    if 'thumb' in str(e).lower() or 'image' in str(e).lower() or 'invalid' in str(e).lower():
-                        print("⚠️  فشل استخدام الصورة المصغرة - جاري المحاولة بدونها...")
-                        await client.send_file(
-                            entity,
-                            video_path,
-                            caption=caption,
-                            supports_streaming=True,
-                            force_document=False,
-                            parse_mode='html',
-                            part_size=1024 * 1024,
-                            progress_callback=None
-                        )
-                    else:
-                        raise
+                ]
+                
+                # رفع كـ Media Group (الصورة على اليسار والفيديو على اليمين)
+                await client.send_media_group(
+                    entity,
+                    media,
+                    caption=caption,
+                    parse_mode='html',
+                    supports_streaming=True
+                )
                 
                 upload_time = time.time() - start_upload
                 video_size = Path(video_path).stat().st_size / 1024 / 1024
@@ -378,15 +331,14 @@ async def main():
                 print("\n⚡ جاري رفع ملفات المسلسلات...")
                 start_upload = time.time()
                 
-                await client.send_file(
+                # تحويل القائمة إلى Media Group
+                media = [InputMediaDocument(file=f) for f in media_files]
+                await client.send_media_group(
                     entity,
-                    media_files,
+                    media,
                     caption=caption,
-                    supports_streaming=True,
-                    force_document=False,
                     parse_mode='html',
-                    part_size=1024 * 1024,
-                    progress_callback=None
+                    supports_streaming=True
                 )
                 
                 upload_time = time.time() - start_upload
@@ -429,10 +381,10 @@ if __name__ == "__main__":
         print(f"{'='*70}", file=sys.stderr)
         
         error_msg = str(e).lower()
-        if "login" in error_msg or "session" in error_msg:
-            print("\n💡 الحل الفوري:", file=sys.stderr)
-            print("   • تأكد من صحة TELEGRAM_SESSION_STRING", file=sys.stderr)
-            print("   • أعد إنشاء الجلسة باستخدام سكريبت التوليد", file=sys.stderr)
+        if "media group" in error_msg:
+            print("\n💡 الحل الجذري:", file=sys.stderr)
+            print("   • تم تطبيق الحل: رفع الصورة والفيديو كـ Media Group", file=sys.stderr)
+            print("   • تأكد من أن رابط القناة صالح وانتم عضو فيها", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
@@ -440,9 +392,5 @@ if __name__ == "__main__":
             print("\n💡 الحل الفوري (كـ صاحب القناة):", file=sys.stderr)
             print("   1. تأكد من أن الرابط صالح", file=sys.stderr)
             print("   2. جرب استخدام رابط دعوة جديد من إعدادات القناة", file=sys.stderr)
-        elif "thumb" in error_msg or "image" in error_msg:
-            print("\n💡 الحل الفوري:", file=sys.stderr)
-            print("   • تم تطبيق التحويل التلقائي من WebP إلى JPG", file=sys.stderr)
-            print("   • إذا استمر الخطأ: استخدم صورة بامتداد JPG/PNG مباشرة", file=sys.stderr)
         
         sys.exit(1)
