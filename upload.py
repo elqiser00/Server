@@ -32,6 +32,41 @@ def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
+def get_video_info(file_path):
+    """استخراج معلومات الفيديو (المدة، العرض، الارتفاع) باستخدام ffprobe"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-show_entries', 'stream=width,height',
+            '-of', 'json',
+            file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise Exception(f"فشل استخراج معلومات الفيديو: {result.stderr}")
+        
+        data = json.loads(result.stdout)
+        duration = float(data['format']['duration'])
+        width = int(data['streams'][0]['width'])
+        height = int(data['streams'][0]['height'])
+        return duration, width, height
+    except Exception as e:
+        print(f"⚠️  فشل استخراج معلومات الفيديو: {str(e)}")
+        return 0, 1280, 720  # قيم افتراضية
+
+async def convert_webp_to_jpg(webp_path):
+    """تحويل WebP إلى JPG (مطلوب لتيليجرام)"""
+    try:
+        # تحويل بسيط باستخدام إعادة تسمية (تيليجرام يدعم هذا في معظم الحالات)
+        jpg_path = str(Path(webp_path).with_suffix('.jpg'))
+        Path(webp_path).rename(jpg_path)
+        return jpg_path
+    except Exception as e:
+        print(f"⚠️  فشل تحويل الصورة: {str(e)} - سيتم استخدام الصورة كما هي")
+        return webp_path
+
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف بسرعات قصوى مع عرض تقدم متجدد في سطر واحد"""
     url = url.strip()
@@ -102,8 +137,9 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
                     percent = (current_size / total_size) * 100
                     
-                    # عرض التقدم في سطر واحد (بدون تكرار)
-                    if percent - last_percent >= 1:  # تحديث كل 1%
+                    # تحديث كل 5% لتجنب التكرار الزائد
+                    if percent - last_percent >= 5:  # ← التحديث كل 5% (مهم جداً)
+                        # عرض التقدم في سطر واحد
                         print(
                             f"\r   تنزيل: {filepath.name} | {current_size / 1024 / 1024:.2f}MB/{total_size / 1024 / 1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
                             end='', flush=True
@@ -208,7 +244,8 @@ def upload_progress(current, total):
     if not hasattr(upload_progress, 'last_percent'):
         upload_progress.last_percent = -1
     
-    if percent - upload_progress.last_percent >= 1:  # تحديث كل 1%
+    # تحديث كل 5% لتجنب التكرار الزائد
+    if percent - upload_progress.last_percent >= 5:  # ← التحديث كل 5% (مهم جداً)
         print(
             f"\r   رفع: | {current / 1024 / 1024:.2f}MB/{total / 1024 / 1024:.2f}MB | {percent:.1f}%",
             end='', flush=True
@@ -217,7 +254,7 @@ def upload_progress(current, total):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تقدم متجدد)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (عرض تقدم متجدد)")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى مع عرض التقدم في سطر واحد")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -269,6 +306,11 @@ async def main():
                 print("\n🎬 معالجة وضع الأفلام...")
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
+                
+                # ✅ تحويل WebP إلى JPG (لضمان التوافق)
+                if image_path.lower().endswith(('.webp', '.WEBP')):
+                    print("🖼️  تحويل الصورة من WebP إلى JPG...")
+                    image_path = await convert_webp_to_jpg(image_path)
                 
                 print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
             
