@@ -105,6 +105,11 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
         )
         response.raise_for_status()
         
+        # استخراج الحجم الكلي
+        total_size = int(response.headers.get('content-length', 0))
+        if total_size == 0:
+            total_size = 1  # تجنب قسمة على صفر
+        
         # تحديد الامتداد
         if is_image:
             ext = os.path.splitext(urlparse(url).path)[1].lower()
@@ -118,11 +123,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             if base_name.lower().endswith('.mp4'):
                 base_name = base_name[:-4]
             filepath = Path(save_dir) / f"{base_name}.mp4"
-        
-        # استخراج الحجم الكلي
-        total_size = int(response.headers.get('content-length', 0))
-        if total_size == 0:
-            total_size = 1  # تجنب قسمة على صفر
         
         # تنزيل بقطع كبيرة (64 كيلوبايت)
         CHUNK_SIZE = 65536
@@ -245,7 +245,7 @@ def upload_progress(current, total):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تقدم متجدد)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (عرض حجم الملف فقط)")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى مع عرض التقدم في سطر واحد")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -343,36 +343,20 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ فيديو مع صورة مصغرة
+            # ✅ الحل النهائي: رفع كـ مستند مع عرض حجم الملف فقط
             if mode == 'movie':
-                print("\n⚡ جاري الرفع (الفيديو مع الصورة المصغرة)...")
+                print("\n⚡ جاري الرفع كـ مستند (عرض حجم الملف فقط)...")
                 start_upload = time.time()
                 
-                # استخراج معلومات الفيديو
-                print("🔄 استخراج معلومات الفيديو...")
-                duration, width, height = get_video_info(video_path)
-                
-                # إعداد مُحددات الفيديو
-                video_attributes = [
-                    DocumentAttributeVideo(
-                        duration=int(duration),
-                        w=width,
-                        h=height,
-                        round_message=False
-                    )
-                ]
-                
-                # رفع الفيديو مع الصورة كـ صورة مصغرة
-                print("🔄 رفع الفيديو مع الصورة المصغرة...")
+                # رفع الفيديو كـ مستند (بدون صورة مصغرة وبدون وقت)
+                print("🔄 رفع الفيديو كـ مستند...")
                 await client.send_file(
                     entity,
                     video_path,
-                    thumb=image_path if image_path and Path(image_path).exists() else None,
                     caption=caption,
-                    supports_streaming=True,
+                    supports_streaming=False,  # لتفعيل العرض كـ مستند
                     parse_mode='html',
-                    force_document=False,  # ← المفتاح السري لعرض تفاصيل الملف
-                    attributes=video_attributes,
+                    force_document=True,  # ← المفتاح السري لعرض حجم الملف فقط
                     part_size=1024 * 1024,
                     progress_callback=upload_progress
                 )
@@ -382,32 +366,20 @@ async def main():
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
                 print(f"\n✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
-                print("\n🎉 النتيجة: فيديو مع تفاصيل المدة والحجم (مثل الصورة التي أرسلتها)")
+                print("\n🎉 النتيجة: مستند مع عرض حجم الملف فقط (مثل الصورة التي أرسلتها)")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات...")
+                print("\n⚡ جاري رفع ملفات المسلسلات كـ مستندات...")
                 start_upload = time.time()
                 
                 for file_path in media_files:
-                    # استخراج معلومات الفيديو
-                    duration, width, height = get_video_info(file_path)
-                    attributes = [
-                        DocumentAttributeVideo(
-                            duration=int(duration),
-                            w=width,
-                            h=height,
-                            round_message=False
-                        )
-                    ]
-                    
                     await client.send_file(
                         entity,
                         file_path,
                         caption=caption,
-                        supports_streaming=True,
+                        supports_streaming=False,
                         parse_mode='html',
-                        force_document=False,
-                        attributes=attributes,
+                        force_document=True,
                         part_size=1024 * 1024,
                         progress_callback=upload_progress
                     )
@@ -424,7 +396,7 @@ async def main():
             print(f"📊 ملخص:")
             print(f"   - الوضع: {'فيلم' if mode == 'movie' else 'مسلسل'}")
             print(f"   - القناة: {getattr(entity, 'title', channel)}")
-            print(f"   - الشكل: فيديو مع تفاصيل المدة والحجم (مثل الصورة التي أرسلتها)")
+            print(f"   - الشكل: مستند مع عرض حجم الملف فقط (مثل الصورة التي أرسلتها)")
             print(f"   - الحد الأقصى: 1999 ميجابايت (من 2000 الرسمي)")
             print("="*70)
         
@@ -454,7 +426,7 @@ if __name__ == "__main__":
         error_msg = str(e).lower()
         if "media" in error_msg and "group" in error_msg:
             print("\n💡 الحل النهائي:", file=sys.stderr)
-            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ فيديو مع صورة مصغرة", file=sys.stderr)
+            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ مستند", file=sys.stderr)
             print("   • تأكد من تثبيت ffmpeg في بيئة جيتهاب", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
