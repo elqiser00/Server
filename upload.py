@@ -30,7 +30,7 @@ def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف مع تخطي SSL تلقائياً + عرض تقدم في سطر واحد"""
+    """تنزيل الملف مع تخطي SSL تلقائياً + عرض مراحل التنزيل"""
     url = url.strip()
     if not url:
         raise Exception("رابط فارغ بعد التنقية!")
@@ -83,26 +83,19 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     base_name = base_name[:-4]
                 filepath = Path(save_dir) / f"{base_name}.mp4"
             
+            # تنزيل بدون عرض تقدم نسب مئوية
             CHUNK_SIZE = 65536
             with open(filepath, 'wb') as f:
                 current_size = 0
-                last_percent = -1
                 for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                     if chunk:
                         f.write(chunk)
                         current_size += len(chunk)
-                        elapsed = time.time() - start_time
-                        speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
-                        percent = (current_size / total_size) * 100
-                        
-                        if percent - last_percent >= 5:
-                            print(
-                                f"\r   تنزيل: {filepath.name} | {current_size/1024/1024:.2f}MB/{total_size/1024/1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
-                                end='', flush=True
-                            )
-                            last_percent = percent
-                
-                print(f"\n✅ تم التنزيل: {filepath.name} ({current_size/1024/1024:.2f}MB) | السرعة: {speed:.2f}MB/s")
+            
+            elapsed = time.time() - start_time
+            speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
+            
+            print(f"\n✅ تم التنزيل: {filepath.name} ({current_size/1024/1024:.2f}MB) | السرعة: {speed:.2f}MB/s")
             
             if not is_image and current_size > MAX_VIDEO_SIZE_BYTES:
                 filepath.unlink(missing_ok=True)
@@ -151,7 +144,7 @@ async def main():
     print("="*70)
     print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي")
     print("="*70)
-    print("✅ تخطي SSL تلقائياً | ✅ فيديو مع صورة مصغرة | ✅ تقدم في سطر واحد")
+    print("✅ تخطي SSL تلقائياً | ✅ فيديو مع صورة مصغرة | ✅ مراحل التنزيل والرفع الواضحة")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -191,8 +184,12 @@ async def main():
                     raise Exception("مطلوب رابط الصورة ورابط الفيديو")
                 
                 print("\n🎬 جاري تنزيل الملفات...")
+                print("جاري تحميل الصوره")
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
+                print("تم تحميل الصوره")
+                print("جاري تحميل الفيديو")
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
+                print("تم تحميل الفيديو")
                 print(f"✅ جاهز للرفع: فيديو مع صورة مصغرة ({Path(video_path).name})")
             
             else:  # series
@@ -220,7 +217,9 @@ async def main():
                         continue
                     
                     try:
+                        print(f"جاري تحميل الحلقة {i}")
                         media_files.append(await validate_and_download_file(url, tmp_dir, name, is_image=False))
+                        print(f"تم تحميل الحلقة {i}")
                         print(f"✅ تمت الإضافة: {Path(media_files[-1]).name}")
                     except Exception as e:
                         print(f"❌ فشل معالجة الملف {i}: {str(e)}")
@@ -233,7 +232,7 @@ async def main():
             
             # ✅ الحل النهائي: رفع الفيديو مع صورة مصغرة (الطريقة الوحيدة المدعومة 100%)
             if mode == 'movie':
-                print("⚡ جاري الرفع (فيديو مع صورة مصغرة احترافية)...")
+                print("جاري رفع البوست (الصوره على الشمال والفيديو على اليمين)")
                 
                 # تحويل WebP تلقائياً إلى JPG (مطلوب للصورة المصغرة)
                 if image_path.lower().endswith('.webp'):
@@ -243,7 +242,6 @@ async def main():
                         image_path = jpg_path
                         print(f"🔄 تم تحويل امتداد الصورة من WebP إلى JPG: {Path(jpg_path).name}")
                     except:
-                        # إذا فشل التحويل، استخدم الصورة كما هي (قد لا تعمل كـ صورة مصغرة)
                         print("⚠️  فشل تحويل WebP إلى JPG - سيتم المحاولة بدون تحويل")
                 
                 # الرفع النهائي (الفيديو مع الصورة كـ صورة مصغرة)
@@ -252,18 +250,19 @@ async def main():
                     video_path,
                     thumb=image_path if Path(image_path).exists() else None,
                     caption=caption,
-                    supports_streaming=True,   # ← لتشغيل الفيديو مباشرة
-                    force_document=False,      # ← لعرضه كـ فيديو (ليس مستند)
+                    supports_streaming=True,
+                    force_document=False,
                     parse_mode='html'
                 )
                 
+                print("تم رفع البوست")
                 print("\n✅ تم الرفع بنجاح!")
                 print("🎉 النتيجة: فيديو مع صورة مصغرة (مثل جميع القنوات الاحترافية)")
-                print("   - تظهر المدة والحجم تحت الفيديو (مثل: 1:45:57 • 837.6 MB)")
-                print("   - عند الضغط يبدأ التشغيل فوراً (بدون تنزيل)")
+                print("   - تظهر المدة والحجم تحت الفيديو")
+                print("   - عند الضغط يبدأ التشغيل فوراً")
             
             else:  # series
-                print("⚡ جاري رفع ملفات المسلسلات...")
+                print("جاري رفع ملفات المسلسلات...")
                 for i, file_path in enumerate(media_files, 1):
                     await client.send_file(
                         entity,
@@ -273,6 +272,7 @@ async def main():
                         force_document=False,
                         parse_mode='html'
                     )
+                print("تم رفع الملفات")
                 print("\n✅ تم الرفع بنجاح!")
             
             print("\n" + "="*70)
