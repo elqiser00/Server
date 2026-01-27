@@ -241,7 +241,7 @@ async def main():
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الطريقة الصحيحة المدعومة)
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الطريقة المدعومة في جميع الإصدارات)
             if mode == 'movie':
                 print("⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 
@@ -255,12 +255,14 @@ async def main():
                 # الترتيب المهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
                 media_list = [image_path, video_path]
                 
-                # الطريقة الصحيحة لإنشاء مجموعة وسائط (بدون كلاسات معقدة)
-                await client.send_media_group(
+                # الطريقة الصحيحة المدعومة في جميع إصدارات Telethon
+                await client.send_file(
                     entity,
-                    media_list,  # قائمة مسارات الملفات مباشرة
+                    media_list,  # قائمة الملفات تُنشئ تلقائياً "مجموعة وسائط"
                     caption=caption,
-                    parse_mode='html'
+                    parse_mode='html',
+                    supports_streaming=True,
+                    force_document=False
                 )
                 
                 print("\n✅ تم الرفع بنجاح!")
@@ -268,11 +270,13 @@ async def main():
             
             else:  # series
                 print("⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
-                await client.send_media_group(
+                await client.send_file(
                     entity,
                     media_files,
                     caption=caption,
-                    parse_mode='html'
+                    parse_mode='html',
+                    supports_streaming=True,
+                    force_document=False
                 )
                 print("\n✅ تم الرفع بنجاح!")
             
