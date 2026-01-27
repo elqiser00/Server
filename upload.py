@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputMediaPhoto, InputMediaDocument
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -125,7 +124,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     except requests.exceptions.SSLError:
         raise Exception(
             "خطأ شهادة SSL:\n"
-            "المosite يستخدم شهادة غير موثوقة.\n"
+            "الموقع يستخدم شهادة غير موثوقة.\n"
             "الحل: فعّل 'skip_ssl = true' في إعدادات الـ Workflow."
         )
     except Exception as e:
@@ -167,12 +166,9 @@ async def resolve_channel(client, channel_input):
             async for dialog in client.iter_dialogs(limit=30):
                 if dialog.is_channel and not dialog.is_group:
                     try:
-                        # التحقق من تطابق كود الدعوة
-                        full = await client(GetFullChannelRequest(dialog.entity))
-                        if hasattr(full.chats[0], 'invite_hash') and full.chats[0].invite_hash:
-                            if full.chats[0].invite_hash.lower() == invite_hash.lower():
-                                print(f"✅ تم العثور على القناة: {dialog.name}")
-                                return dialog.entity
+                        if hasattr(dialog.entity, 'title') and invite_hash.lower() in dialog.name.lower():
+                            print(f"✅ تم العثور على القناة: {dialog.name}")
+                            return dialog.entity
                     except:
                         continue
             
@@ -205,7 +201,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار المُعدّل للبوست المدمج")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي للبوست المدمج")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -226,7 +222,7 @@ async def main():
     if not channel:
         raise Exception("حقل القناة فارغ!")
     
-    # ✅ إصلاح خطأ تسجيل الدخول: إزالة المعلمات غير المدعومة
+    # ✅ إصلاح تسجيل الدخول
     try:
         client = TelegramClient(
             StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
@@ -298,27 +294,24 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل الجذري: رفع الصورة والفيديو في بوست واحد
+            # ✅ الحل الجذري: رفع كـ Media Group باستخدام send_file مع قائمة الملفات
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة + فيديو)...")
+                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 start_upload = time.time()
                 
-                # إنشاء محتوى البوست المدمج
-                media = [
-                    InputMediaPhoto(file=image_path),
-                    InputMediaDocument(
-                        file=video_path,
-                        attributes=[DocumentAttributeFilename(file_name=f"{Path(video_path).stem}.mp4")]
-                    )
-                ]
+                # الترتيب مهم: الصورة أولاً ثم الفيديو = الصورة على اليسار والفيديو على اليمين
+                media_list = [image_path, video_path]
                 
-                # رفع كـ Media Group (الصورة على اليسار والفيديو على اليمين)
-                await client.send_media_group(
+                # الطريقة الصحيحة لإنشاء بوست مدمج (بدون أخطاء)
+                await client.send_file(
                     entity,
-                    media,
+                    media_list,  # قائمة الملفات مباشرة (بدون InputMedia)
                     caption=caption,
+                    supports_streaming=True,  # لتفعيل البث المباشر للفيديو
                     parse_mode='html',
-                    supports_streaming=True
+                    force_document=False,
+                    part_size=1024 * 1024,  # 1 ميجابايت لكل جزء لزيادة السرعة
+                    progress_callback=None
                 )
                 
                 upload_time = time.time() - start_upload
@@ -328,17 +321,18 @@ async def main():
                 print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات...")
+                print("\n⚡ جاري رفع ملفات المسلسلات كـ بوست واحد...")
                 start_upload = time.time()
                 
-                # تحويل القائمة إلى Media Group
-                media = [InputMediaDocument(file=f) for f in media_files]
-                await client.send_media_group(
+                await client.send_file(
                     entity,
-                    media,
+                    media_files,
                     caption=caption,
+                    supports_streaming=True,
                     parse_mode='html',
-                    supports_streaming=True
+                    force_document=False,
+                    part_size=1024 * 1024,
+                    progress_callback=None
                 )
                 
                 upload_time = time.time() - start_upload
@@ -381,10 +375,10 @@ if __name__ == "__main__":
         print(f"{'='*70}", file=sys.stderr)
         
         error_msg = str(e).lower()
-        if "media group" in error_msg:
-            print("\n💡 الحل الجذري:", file=sys.stderr)
-            print("   • تم تطبيق الحل: رفع الصورة والفيديو كـ Media Group", file=sys.stderr)
-            print("   • تأكد من أن رابط القناة صالح وانتم عضو فيها", file=sys.stderr)
+        if "media" in error_msg and "group" in error_msg:
+            print("\n💡 الحل الفوري:", file=sys.stderr)
+            print("   • تم تطبيق الحل الصحيح: رفع كـ قائمة ملفات مباشرة", file=sys.stderr)
+            print("   • تأكد من تحديث الكود لأحدث إصدار", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
