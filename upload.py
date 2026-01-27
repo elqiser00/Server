@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import DocumentAttributeFilename
+from telethon.tl.types import InputMediaPhoto, InputMediaDocument, DocumentAttributeFilename
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -31,41 +31,6 @@ MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
-
-def get_video_info(file_path):
-    """استخراج معلومات الفيديو (المدة، العرض، الارتفاع) باستخدام ffprobe"""
-    try:
-        cmd = [
-            'ffprobe',
-            '-v', 'error',
-            '-show_entries', 'format=duration',
-            '-show_entries', 'stream=width,height',
-            '-of', 'json',
-            file_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            raise Exception(f"فشل استخراج معلومات الفيديو: {result.stderr}")
-        
-        data = json.loads(result.stdout)
-        duration = float(data['format']['duration'])
-        width = int(data['streams'][0]['width'])
-        height = int(data['streams'][0]['height'])
-        return duration, width, height
-    except Exception as e:
-        print(f"⚠️  فشل استخراج معلومات الفيديو: {str(e)}")
-        return 0, 1280, 720  # قيم افتراضية
-
-async def convert_webp_to_jpg(webp_path):
-    """تحويل WebP إلى JPG (مطلوب لتيليجرام)"""
-    try:
-        # تحويل بسيط باستخدام إعادة تسمية (تيليجرام يدعم هذا في معظم الحالات)
-        jpg_path = str(Path(webp_path).with_suffix('.jpg'))
-        Path(webp_path).rename(jpg_path)
-        return jpg_path
-    except Exception as e:
-        print(f"⚠️  فشل تحويل الصورة: {str(e)} - سيتم استخدام الصورة كما هي")
-        return webp_path
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف بسرعات قصوى مع عرض تقدم متجدد في سطر واحد"""
@@ -138,8 +103,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     percent = (current_size / total_size) * 100
                     
                     # تحديث كل 5% لتجنب التكرار الزائد
-                    if percent - last_percent >= 5:  # ← التحديث كل 5% (مهم جداً)
-                        # عرض التقدم في سطر واحد
+                    if percent - last_percent >= 5:  # التحديث كل 5%
                         print(
                             f"\r   تنزيل: {filepath.name} | {current_size / 1024 / 1024:.2f}MB/{total_size / 1024 / 1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
                             end='', flush=True
@@ -238,23 +202,9 @@ async def resolve_channel(client, channel_input):
             "  • كود الدعوة: +Abc123"
         )
 
-def upload_progress(current, total):
-    """عرض تقدم الرفع في سطر واحد (بدون تكرار)"""
-    percent = (current / total) * 100
-    if not hasattr(upload_progress, 'last_percent'):
-        upload_progress.last_percent = -1
-    
-    # تحديث كل 5% لتجنب التكرار الزائد
-    if percent - upload_progress.last_percent >= 5:  # ← التحديث كل 5% (مهم جداً)
-        print(
-            f"\r   رفع: | {current / 1024 / 1024:.2f}MB/{total / 1024 / 1024:.2f}MB | {percent:.1f}%",
-            end='', flush=True
-        )
-        upload_progress.last_percent = percent
-
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (عرض تقدم متجدد)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (البوست المدمج)")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى مع عرض التقدم في سطر واحد")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -307,11 +257,6 @@ async def main():
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 
-                # ✅ تحويل WebP إلى JPG (لضمان التوافق)
-                if image_path.lower().endswith(('.webp', '.WEBP')):
-                    print("🖼️  تحويل الصورة من WebP إلى JPG...")
-                    image_path = await convert_webp_to_jpg(image_path)
-                
                 print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
             
             else:  # series
@@ -352,22 +297,35 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مستند مع عرض حجم الملف فقط
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الصورة على اليسار + الفيديو على اليمين)
             if mode == 'movie':
-                print("\n⚡ جاري الرفع (كـ مستند)...")
+                print("\n⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 start_upload = time.time()
                 
-                # رفع الفيديو كـ مستند (عرض حجم الملف فقط)
-                print("🔄 رفع الفيديو كـ مستند...")
-                await client.send_file(
+                # 1. رفع الصورة أولاً (كملف مؤقت)
+                print("🔄 رفع الصورة إلى تيليجرام...")
+                image_file = await client.upload_file(image_path)
+                
+                # 2. رفع الفيديو (كملف مؤقت)
+                print("🔄 رفع الفيديو إلى تيليجرام...")
+                video_file = await client.upload_file(video_path)
+                
+                # 3. إنشاء مجموعة وسائط مع الملفات المرفوعة
+                media = [
+                    InputMediaPhoto(media=image_file),
+                    InputMediaDocument(
+                        media=video_file,
+                        attributes=[DocumentAttributeFilename(file_name=Path(video_path).name)]
+                    )
+                ]
+                
+                # 4. إرسال المجموعة كـ منشور واحد
+                await client.send_media_group(
                     entity,
-                    video_path,
+                    media,
                     caption=caption,
-                    supports_streaming=False,  # لعرضه كـ مستند
                     parse_mode='html',
-                    force_document=True,  # ← المفتاح السري لعرض حجم الملف فقط
-                    part_size=1024 * 1024,
-                    progress_callback=upload_progress
+                    supports_streaming=True
                 )
                 
                 upload_time = time.time() - start_upload
@@ -375,23 +333,25 @@ async def main():
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
                 print(f"\n✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
-                print("\n🎉 النتيجة: مستند مع عرض حجم الملف فقط (مثل الصورة التي أرسلتها)")
+                print("\n🎉 النتيجة: بوست مدمج بالشكل المطلوب (مثل الصور التي أرسلتها)")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات كـ مستندات...")
+                print("\n⚡ جاري رفع ملفات المسلسلات كـ بوست واحد...")
                 start_upload = time.time()
                 
+                # رفع جميع الملفات أولاً
+                media = []
                 for file_path in media_files:
-                    await client.send_file(
-                        entity,
-                        file_path,
-                        caption=caption,
-                        supports_streaming=False,
-                        parse_mode='html',
-                        force_document=True,
-                        part_size=1024 * 1024,
-                        progress_callback=upload_progress
-                    )
+                    file = await client.upload_file(file_path)
+                    media.append(InputMediaDocument(media=file))
+                
+                await client.send_media_group(
+                    entity,
+                    media,
+                    caption=caption,
+                    parse_mode='html',
+                    supports_streaming=True
+                )
                 
                 upload_time = time.time() - start_upload
                 total_size = sum(Path(f).stat().st_size for f in media_files) / 1024 / 1024
@@ -405,7 +365,7 @@ async def main():
             print(f"📊 ملخص:")
             print(f"   - الوضع: {'فيلم' if mode == 'movie' else 'مسلسل'}")
             print(f"   - القناة: {getattr(entity, 'title', channel)}")
-            print(f"   - الشكل: مستند مع عرض حجم الملف فقط (مثل الصورة التي أرسلتها)")
+            print(f"   - الشكل: صورة على اليسار + فيديو على اليمين في منشور واحد")
             print(f"   - الحد الأقصى: 1999 ميجابايت (من 2000 الرسمي)")
             print("="*70)
         
@@ -435,7 +395,8 @@ if __name__ == "__main__":
         error_msg = str(e).lower()
         if "media" in error_msg and "group" in error_msg:
             print("\n💡 الحل النهائي:", file=sys.stderr)
-            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ مستند", file=sys.stderr)
+            print("   • تم تطبيق الطريقة الصحيحة: رفع الملفات أولاً ثم إنشاء المجموعة", file=sys.stderr)
+            print("   • تأكد من أن رابط القناة صالح وانتم عضو فيها", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
