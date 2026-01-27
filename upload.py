@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.types import DocumentAttributeFilename
 from telethon.errors.rpcerrorlist import (
     UserAlreadyParticipantError, InviteHashInvalidError,
     InviteHashExpiredError, ChannelPrivateError
@@ -32,44 +32,8 @@ def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
-def get_video_info(file_path):
-    """استخراج معلومات الفيديو (المدة، العرض، الارتفاع) باستخدام ffprobe"""
-    try:
-        cmd = [
-            'ffprobe',
-            '-v', 'error',
-            '-show_entries', 'format=duration',
-            '-show_entries', 'stream=width,height',
-            '-of', 'json',
-            file_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            raise Exception(f"فشل استخراج معلومات الفيديو: {result.stderr}")
-        
-        data = json.loads(result.stdout)
-        duration = float(data['format']['duration'])
-        width = int(data['streams'][0]['width'])
-        height = int(data['streams'][0]['height'])
-        return duration, width, height
-    except Exception as e:
-        print(f"⚠️  فشل استخراج معلومات الفيديو: {str(e)}")
-        return 0, 1280, 720  # قيم افتراضية
-
-async def convert_webp_to_jpg(webp_path):
-    """تحويل WebP إلى JPG (مطلوب لتيليجرام)"""
-    try:
-        # تحويل بسيط باستخدام إعادة تسمية (تيليجرام يدعم هذا في معظم الحالات)
-        jpg_path = str(Path(webp_path).with_suffix('.jpg'))
-        Path(webp_path).rename(jpg_path)
-        print(f"🔄 تم تحويل الامتداد: {Path(webp_path).name} → {Path(jpg_path).name}")
-        return jpg_path
-    except Exception as e:
-        print(f"⚠️  فشل تحويل الصورة: {str(e)} - سيتم استخدام الصورة كما هي")
-        return webp_path
-
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف بسرعات قصوى مع فحص الحجم وعرض تقدم متجدد"""
+    """تنزيل الملف بسرعات قصوى مع عرض تقدم متجدد في سطر واحد"""
     url = url.strip()
     
     if not url:
@@ -128,6 +92,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
         CHUNK_SIZE = 65536
         with open(filepath, 'wb') as f:
             current_size = 0
+            last_percent = -1
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if chunk:
                     f.write(chunk)
@@ -137,11 +102,13 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
                     percent = (current_size / total_size) * 100
                     
-                    # عرض التقدم في سطر واحد
-                    print(
-                        f"\r   تنزيل: {filepath.name} | {current_size / 1024 / 1024:.2f}MB/{total_size / 1024 / 1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
-                        end='', flush=True
-                    )
+                    # عرض التقدم في سطر واحد (بدون تكرار)
+                    if percent - last_percent >= 1:  # تحديث كل 1%
+                        print(
+                            f"\r   تنزيل: {filepath.name} | {current_size / 1024 / 1024:.2f}MB/{total_size / 1024 / 1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
+                            end='', flush=True
+                        )
+                        last_percent = percent
             
             # إظهار النتيجة النهائية
             print(f"\n✅ تم التنزيل: {filepath.name} ({current_size / 1024 / 1024:.2f} ميجابايت) | السرعة: {speed:.2f} ميجابايت/ثانية ✓")
@@ -236,16 +203,21 @@ async def resolve_channel(client, channel_input):
         )
 
 def upload_progress(current, total):
-    """عرض تقدم الرفع في سطر واحد"""
+    """عرض تقدم الرفع في سطر واحد (بدون تكرار)"""
     percent = (current / total) * 100
-    print(
-        f"\r   رفع: | {current / 1024 / 1024:.2f}MB/{total / 1024 / 1024:.2f}MB | {percent:.1f}%",
-        end='', flush=True
-    )
+    if not hasattr(upload_progress, 'last_percent'):
+        upload_progress.last_percent = -1
+    
+    if percent - upload_progress.last_percent >= 1:  # تحديث كل 1%
+        print(
+            f"\r   رفع: | {current / 1024 / 1024:.2f}MB/{total / 1024 / 1024:.2f}MB | {percent:.1f}%",
+            end='', flush=True
+        )
+        upload_progress.last_percent = percent
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (عرض حجم الملف فقط)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تقدم متجدد)")
     print("="*70)
     print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى مع عرض التقدم في سطر واحد")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
@@ -298,11 +270,6 @@ async def main():
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 
-                # ✅ تحويل WebP إلى JPG (لضمان التوافق)
-                if image_path.lower().endswith(('.webp', '.WEBP')):
-                    print("🖼️  تحويل الصورة من WebP إلى JPG...")
-                    image_path = await convert_webp_to_jpg(image_path)
-                
                 print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
             
             else:  # series
@@ -345,16 +312,16 @@ async def main():
             
             # ✅ الحل النهائي: رفع كـ مستند مع عرض حجم الملف فقط
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ مستند (عرض حجم الملف فقط)...")
+                print("\n⚡ جاري الرفع (كـ مستند)...")
                 start_upload = time.time()
                 
-                # رفع الفيديو كـ مستند (بدون صورة مصغرة وبدون وقت)
+                # رفع الفيديو كـ مستند (عرض حجم الملف فقط)
                 print("🔄 رفع الفيديو كـ مستند...")
                 await client.send_file(
                     entity,
                     video_path,
                     caption=caption,
-                    supports_streaming=False,  # لتفعيل العرض كـ مستند
+                    supports_streaming=False,  # لعرضه كـ مستند
                     parse_mode='html',
                     force_document=True,  # ← المفتاح السري لعرض حجم الملف فقط
                     part_size=1024 * 1024,
@@ -427,7 +394,6 @@ if __name__ == "__main__":
         if "media" in error_msg and "group" in error_msg:
             print("\n💡 الحل النهائي:", file=sys.stderr)
             print("   • تم تطبيق الطريقة الصحيحة: رفع كـ مستند", file=sys.stderr)
-            print("   • تأكد من تثبيت ffmpeg في بيئة جيتهاب", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
