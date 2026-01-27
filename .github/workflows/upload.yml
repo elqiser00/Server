@@ -1,0 +1,120 @@
+name: 📤 رفع محتوى على تيليجرام
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'الوضع (movie/series)'
+        required: true
+        default: 'movie'
+        type: choice
+        options:
+          - movie
+          - series
+      
+      channel:
+        description: 'معرف القناة (@channel أو ID رقمي)'
+        required: true
+        type: string
+      
+      caption:
+        description: 'الكابشن/الوصف للبوست'
+        required: true
+        type: string
+      
+      # إعدادات وضع الأفلام
+      image_url:
+        description: 'رابط مباشر للصورة (لوضع الأفلام فقط)'
+        required: false
+        type: string
+      
+      video_url:
+        description: 'رابط مباشر للفيديو (لوضع الأفلام فقط)'
+        required: false
+        type: string
+      
+      video_name:
+        description: 'اسم ملف الفيديو (بدون امتداد، لوضع الأفلام فقط)'
+        required: false
+        default: 'movie'
+        type: string
+      
+      # إعدادات وضع المسلسلات
+      series_videos:
+        description: 'بيانات المسلسلات بصيغة JSON (حتى 10 ملفات). مثال: [{"url":"رابط1","name":"الحلقة1"},{"url":"رابط2","name":"الحلقة2"}]'
+        required: false
+        type: string
+      
+      skip_ssl:
+        description: 'تخطي التحقق من SSL (للمواقع غير الآمنة)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: 🛠️ إعداد البيئة
+        uses: actions/checkout@v4
+        
+      - name: 🐍 تثبيت بايثون
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 📦 تثبيت المكتبات المطلوبة
+        run: |
+          pip install --upgrade pip
+          pip install telethon requests "pysocks>=1.6.8"
+      
+      - name: 🔒 تحميل المتغيرات السرية
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        run: |
+          if [ -z "$TELEGRAM_API_ID" ] || [ -z "$TELEGRAM_API_HASH" ] || [ -z "$TELEGRAM_SESSION_STRING" ]; then
+            echo "❌ المتغيرات السرية غير مكتملة! تأكد من إعداد:"
+            echo "   - TELEGRAM_API_ID"
+            echo "   - TELEGRAM_API_HASH"
+            echo "   - TELEGRAM_SESSION_STRING"
+            exit 1
+          fi
+          echo "✅ تم تحميل المتغيرات السرية بنجاح"
+      
+      - name: 🚀 تشغيل سكريبت الرفع
+        env:
+          MODE: ${{ github.event.inputs.mode }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          CAPTION: ${{ github.event.inputs.caption }}
+          IMAGE_URL: ${{ github.event.inputs.image_url }}
+          VIDEO_URL: ${{ github.event.inputs.video_url }}
+          VIDEO_NAME: ${{ github.event.inputs.video_name }}
+          SERIES_VIDEOS: ${{ github.event.inputs.series_videos }}
+          SKIP_SSL_VERIFY: ${{ github.event.inputs.skip_ssl }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        run: |
+          python upload.py
+          
+      - name: ✅ اكتمال العملية بنجاح
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "🎉 تمت عملية الرفع بنجاح!"
+          echo "الوضع: ${{ github.event.inputs.mode }}"
+          echo "القناة: ${{ github.event.inputs.channel }}"
+          echo "=========================================="
+      
+      - name: ❌ فشل العملية
+        if: failure()
+        run: |
+          echo "=========================================="
+          echo "❌ فشلت عملية الرفع - راجع السجلات أعلاه"
+          echo "=========================================="
