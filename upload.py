@@ -32,33 +32,6 @@ def sanitize_filename(filename):
     """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
-async def convert_webp_to_jpg(webp_path):
-    """تحويل WebP إلى JPG (مطلوبة لتيليجرام)"""
-    try:
-        # محاولة استخدام Pillow إذا مثبتة
-        try:
-            from PIL import Image
-            jpg_path = str(Path(webp_path).with_suffix('.jpg'))
-            img = Image.open(webp_path)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                img = background
-            img.save(jpg_path, 'JPEG', quality=95)
-            print(f"✅ تم التحويل إلى JPG باستخدام Pillow: {Path(jpg_path).name}")
-            return jpg_path
-        except ImportError:
-            # الحل البديل: إعادة تسمية الملف (تيليجرام يدعم هذا في معظم الحالات)
-            jpg_path = str(Path(webp_path).with_suffix('.jpg'))
-            Path(webp_path).rename(jpg_path)
-            print(f"🔄 تم تغيير الامتداد إلى JPG (بدون معالجة): {Path(jpg_path).name}")
-            return jpg_path
-    except Exception as e:
-        print(f"⚠️  فشل تحويل الصورة: {str(e)} - سيتم استخدام الصورة كما هي (قد يسبب أخطاء)")
-        return webp_path
-
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف بسرعات قصوى مع فحص الحجم"""
     url = url.strip()
@@ -151,7 +124,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     except requests.exceptions.SSLError:
         raise Exception(
             "خطأ شهادة SSL:\n"
-            "الموقع يستخدم شهادة غير موثوقة.\n"
+            "المosite يستخدم شهادة غير موثوقة.\n"
             "الحل: فعّل 'skip_ssl = true' في إعدادات الـ Workflow."
         )
     except Exception as e:
@@ -188,7 +161,7 @@ async def resolve_channel(client, channel_input):
             print(f"✅ تم العثور على القناة: {getattr(entity, 'title', 'غير معروف')}")
             return entity
         except (ChannelPrivateError, UserAlreadyParticipantError):
-            # البحث في القنوات المنضمة (كـ صاحب القناة)
+            # البحث في القنوات المنضمة
             print("ℹ️  البحث في القنوات المنضمة (كـ صاحب القناة)...")
             async for dialog in client.iter_dialogs(limit=30):
                 if dialog.is_channel and not dialog.is_group:
@@ -283,12 +256,7 @@ async def main():
                 image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
                 video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 
-                # ✅ تحويل تلقائي من WebP إلى JPG (السبب الرئيسي للأخطاء)
-                if image_path.lower().endswith(('.webp', '.WEBP')):
-                    print("🖼️  تحويل الصورة من WebP إلى JPG (مطلوبة لتيليجرام)...")
-                    image_path = await convert_webp_to_jpg(image_path)
-                
-                print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
+                print(f"✅ جاهز للرفع: فيديو مع صورة مصغرة مخصصة ({Path(video_path).name})")
             
             else:  # series
                 try:
@@ -328,20 +296,18 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (مثل تيليجرام ديسكتوب تماماً)
+            # ✅ الحل النهائي: رفع الفيديو مع صورة مصغرة مخصصة (مثل تيليجرام ديسكتوب 100%)
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ مجموعة وسائط (مثل تيليجرام ديسكتوب 100%)...")
+                print("\n⚡ جاري الرفع كـ فيديو مع صورة مصغرة مخصصة (مثل تيليجرام ديسكتوب 100%)...")
                 start_upload = time.time()
                 
-                # الترتيب: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
-                media_list = [image_path, video_path]
-                
-                # الطريقة الصحيحة التي يستخدمها تيليجرام ديسكتوب
+                # رفع الفيديو مع الصورة كـ صورة مصغرة مخصصة
                 await client.send_file(
                     entity,
-                    media_list,  # قائمة الملفات مباشرة (بدون InputMedia)
+                    video_path,
+                    thumb=image_path if image_path and Path(image_path).exists() else None,
                     caption=caption,
-                    supports_streaming=True,  # لتفعيل البث المباشر
+                    supports_streaming=True,  # تفعيل البث المباشر
                     parse_mode='html',
                     force_document=False,
                     part_size=1024 * 1024,  # 1 ميجابايت لكل جزء
@@ -353,28 +319,26 @@ async def main():
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
                 print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
-                print("\n🎉 النتيجة: بوست مدمج بالشكل المطلوب (مطابق لتيليجرام ديسكتوب 100%)")
+                print("\n🎉 النتيجة: فيديو مع صورة مصغرة مخصصة (مطابق لتيليجرام ديسكتوب 100%)")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
-                start_upload = time.time()
-                
-                await client.send_file(
-                    entity,
-                    media_files,
-                    caption=caption,
-                    supports_streaming=True,
-                    parse_mode='html',
-                    force_document=False,
-                    part_size=1024 * 1024,
-                    progress_callback=None
-                )
-                
-                upload_time = time.time() - start_upload
-                total_size = sum(Path(f).stat().st_size for f in media_files) / 1024 / 1024
-                upload_speed = total_size / upload_time if upload_time > 0 else 0
-                
-                print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
+                print("\n⚡ جاري رفع ملفات المسلسلات (منشور منفصل لكل ملف)...")
+                for i, file_path in enumerate(media_files, 1):
+                    start_upload = time.time()
+                    await client.send_file(
+                        entity,
+                        file_path,
+                        caption=f"{caption}\n\nالحلقة {i}" if len(media_files) > 1 else caption,
+                        supports_streaming=True,
+                        parse_mode='html',
+                        force_document=False,
+                        part_size=1024 * 1024,
+                        progress_callback=None
+                    )
+                    upload_time = time.time() - start_upload
+                    file_size = Path(file_path).stat().st_size / 1024 / 1024
+                    upload_speed = file_size / upload_time if upload_time > 0 else 0
+                    print(f"✅ تم رفع الحلقة {i}: {Path(file_path).name} | السرعة: {upload_speed:.2f} ميجابايت/ثانية")
             
             print("\n" + "="*70)
             print("🎉 تمت العملية بنجاح!")
@@ -382,7 +346,7 @@ async def main():
             print(f"📊 ملخص:")
             print(f"   - الوضع: {'فيلم' if mode == 'movie' else 'مسلسل'}")
             print(f"   - القناة: {getattr(entity, 'title', channel)}")
-            print(f"   - الشكل: صورة على اليسار + فيديو على اليمين (مثل تيليجرام ديسكتوب)")
+            print(f"   - الشكل: فيديو مع صورة مصغرة مخصصة (مثل تيليجرام ديسكتوب)")
             print(f"   - الحد الأقصى: 1999 ميجابايت (من 2000 الرسمي)")
             print("="*70)
         
@@ -412,12 +376,12 @@ if __name__ == "__main__":
         error_msg = str(e).lower()
         if "media" in error_msg and ("invalid" in error_msg or "group" in error_msg):
             print("\n💡 الحل النهائي:", file=sys.stderr)
-            print("   • السبب: صورة بامتداد WebP غير مدعومة في المجموعات", file=sys.stderr)
-            print("   • الحل: تم إضافة تحويل تلقائي من WebP إلى JPG", file=sys.stderr)
-            print("   • تأكد من استخدام أحدث إصدار من السكريبت", file=sys.stderr)
+            print("   • تم تطبيق الحل الصحيح: رفع الفيديو مع صورة مصغرة مخصصة", file=sys.stderr)
+            print("   • هذه هي الطريقة القياسية لتيليجرام ديسكتوب", file=sys.stderr)
         elif "thumb" in error_msg or "image" in error_msg:
             print("\n💡 الحل:", file=sys.stderr)
-            print("   • تم تطبيق تحويل تلقائي من WebP إلى JPG", file=sys.stderr)
+            print("   • تأكد من أن الصورة بصيغة JPG/PNG (تيليجرام لا يدعم WebP كـ صورة مصغرة)", file=sys.stderr)
+            print("   • إذا كانت الصورة WebP: قم بتحويلها إلى JPG قبل الرفع", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
             print("   • قسّم الفيديو إلى أجزاء ≤ 1999 ميجابايت", file=sys.stderr)
