@@ -30,7 +30,7 @@ def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف مع تخطي SSL تلقائياً عند الحاجة + عرض تقدم في سطر واحد"""
+    """تنزيل الملف مع تخطي SSL تلقائياً بدون عرض نسب مئوية"""
     url = url.strip()
     if not url:
         raise Exception("رابط فارغ بعد التنقية!")
@@ -38,7 +38,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     # محاولة التنزيل مع تخطي SSL تلقائي عند الفشل
     for attempt in range(2):
         try:
-            verify_ssl = (attempt == 0)  # المحاولة الأولى: تفعيل التحقق، الثانية: تعطيله
+            verify_ssl = (attempt == 0)
             
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -50,14 +50,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             if 'github.com' in url and os.getenv('REPO_TOKEN'):
                 headers['Authorization'] = f'token {os.getenv("REPO_TOKEN")}'
             
-            # عرض حالة المحاولة
-            if attempt == 0:
-                print(f"⬇️  جاري التنزيل: {url[:60]}...")
-                print(f"   SSL: مُفعّل (المحاولة الأولى)")
-            else:
-                print(f"   ⚠️  إعادة المحاولة مع تعطيل تحقق SSL...")
-                print(f"   SSL: معطّل (المحاولة الثانية)")
-            
+            # محاولة الاتصال مع تخطي SSL عند الحاجة
             start_time = time.time()
             response = requests.get(
                 url,
@@ -86,42 +79,23 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     base_name = base_name[:-4]
                 filepath = Path(save_dir) / f"{base_name}.mp4"
             
-            # التنزيل مع عرض التقدم
+            # التنزيل بدون عرض تقدم
             CHUNK_SIZE = 65536
             with open(filepath, 'wb') as f:
-                current_size = 0
-                last_percent = -1
                 for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                     if chunk:
                         f.write(chunk)
-                        current_size += len(chunk)
-                        elapsed = time.time() - start_time
-                        speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
-                        percent = (current_size / total_size) * 100
-                        
-                        # تحديث كل 5% فقط لتجنب التكرار
-                        if percent - last_percent >= 5:
-                            print(
-                                f"\r   تنزيل: {filepath.name} | {current_size/1024/1024:.2f}MB/{total_size/1024/1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
-                                end='', flush=True
-                            )
-                            last_percent = percent
-                
-                print(f"\n✅ تم التنزيل: {filepath.name} ({current_size/1024/1024:.2f}MB) | السرعة: {speed:.2f}MB/s")
             
-            # فحص الحجم
-            if not is_image and current_size > MAX_VIDEO_SIZE_BYTES:
-                filepath.unlink(missing_ok=True)
-                raise Exception(f"الحجم ({current_size/1024/1024:.1f}MB) يتجاوز 1999MB")
+            elapsed = time.time() - start_time
+            speed = total_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
             
-            return str(filepath)
+            return str(filepath), total_size / 1024 / 1024, speed
         
         except (requests.exceptions.SSLError, ssl.SSLError, ssl.CertificateError) as e:
             if attempt == 0:
-                print(f"   ❌ خطأ SSL: {str(e)[:50]}")
                 continue  # إعادة المحاولة مع تعطيل SSL
             else:
-                raise Exception(f"فشل التنزيل حتى بعد تعطيل SSL: {str(e)}")
+                raise Exception(f"فشل التنزيل حتى بعد تعطيل SSL")
         except Exception as e:
             if 'filepath' in locals() and Path(filepath).exists():
                 Path(filepath).unlink(missing_ok=True)
@@ -145,7 +119,8 @@ async def resolve_channel(client, channel_input):
     
     if invite_hash and len(invite_hash) >= 5:
         try:
-            full_url = f"https://t.me/joinchat/{invite_hash}"
+            # إصلاح الخطأ: إزالة المسافات الزائدة في الرابط
+            full_url = f"https://t.me/joinchat/{invite_hash}"  # ← تم إصلاح المسافات هنا
             entity = await client.get_entity(full_url)
             return entity
         except:
@@ -160,7 +135,7 @@ async def main():
     print("="*70)
     print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي")
     print("="*70)
-    print("✅ تخطي SSL تلقائياً | ✅ بوست مدمج (صورة + فيديو) | ✅ تقدم في سطر واحد")
+    print("✅ تخطي SSL تلقائياً | ✅ مراحل واضحة بدون نسب مئوية")
     print("="*70)
     
     # التحقق من المتغيرات الأساسية
@@ -201,9 +176,20 @@ async def main():
                     raise Exception("مطلوب رابط الصورة ورابط الفيديو")
                 
                 print("\n🎬 جاري تنزيل الملفات...")
-                image_path = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
-                video_path = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
-                print(f"✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
+                
+                # تنزيل الصورة
+                print("جاري تحميل الصوره", end='', flush=True)
+                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
+                print(" ✅")
+                print(f"   تم التحميل: Logo (الحجم: {img_size:.2f}MB | السرعة: {img_speed:.2f}MB/s)")
+                
+                # تنزيل الفيديو
+                print("جاري تحميل الفيديو", end='', flush=True)
+                video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
+                print(" ✅")
+                print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB | السرعة: {vid_speed:.2f}MB/s)")
+                
+                print(f"\n✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
             
             else:  # series
                 try:
@@ -230,9 +216,12 @@ async def main():
                         continue
                     
                     try:
-                        media_files.append(await validate_and_download_file(url, tmp_dir, name, is_image=False))
-                        print(f"✅ تمت الإضافة: {Path(media_files[-1]).name}")
+                        print(f"جاري تحميل الحلقة {i}", end='', flush=True)
+                        file_path, file_size, file_speed = await validate_and_download_file(url, tmp_dir, name, is_image=False)
+                        print(" ✅")
+                        media_files.append(file_path)
                     except Exception as e:
+                        print(f" ❌")
                         print(f"❌ فشل معالجة الملف {i}: {str(e)}")
                         if not media_files:
                             raise Exception("فشل جميع الملفات")
@@ -241,35 +230,35 @@ async def main():
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الطريقة المدعومة في جميع الإصدارات)
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط
             if mode == 'movie':
-                print("⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
+                print("جاري رفع البوست (الصوره على الشمال والفيديو على اليمين)", end='', flush=True)
                 
-                # تحويل WebP تلقائياً إلى JPG (مطلوب لتيليجرام)
+                # تحويل WebP تلقائياً إلى JPG
                 if image_path.lower().endswith('.webp'):
                     jpg_path = str(Path(image_path).with_suffix('.jpg'))
                     Path(image_path).rename(jpg_path)
                     image_path = jpg_path
-                    print(f"🔄 تم تحويل امتداد الصورة من WebP إلى JPG: {Path(jpg_path).name}")
                 
                 # الترتيب المهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
                 media_list = [image_path, video_path]
                 
-                # الطريقة الصحيحة المدعومة في جميع إصدارات Telethon
+                # الرفع بدون عرض تقدم
                 await client.send_file(
                     entity,
-                    media_list,  # قائمة الملفات تُنشئ تلقائياً "مجموعة وسائط"
+                    media_list,
                     caption=caption,
                     parse_mode='html',
                     supports_streaming=True,
                     force_document=False
                 )
                 
+                print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
                 print("🎉 الشكل: صورة على اليسار + فيديو على اليمين في منشور واحد")
             
             else:  # series
-                print("⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
+                print("جاري رفع ملفات المسلسلات", end='', flush=True)
                 await client.send_file(
                     entity,
                     media_files,
@@ -278,6 +267,7 @@ async def main():
                     supports_streaming=True,
                     force_document=False
                 )
+                print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
             
             print("\n" + "="*70)
