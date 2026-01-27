@@ -1,4 +1,4 @@
-name: 📤 رفع محتوى على تيليجرام - الإصدار النهائي مع تفاصيل الفيديو
+name: 📤 رفع محتوى على تيليجرام (الإصدار المحسن)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
           - series
       
       channel:
-        description: 'رابط القناة: @yourchannel أو رابط دعوة (مثل +Abc123)'
+        description: 'معرف القناة: @yourchannel أو رابط دعوة (مثل +Abc123) - يدعم كليهما!'
         required: true
         type: string
       
@@ -22,6 +22,7 @@ on:
         required: true
         type: string
       
+      # إعدادات وضع الأفلام
       image_url:
         description: 'رابط مباشر للصورة (لوضع الأفلام فقط) - سيتم تسميتها تلقائياً Logo.الامتداد'
         required: false
@@ -38,6 +39,7 @@ on:
         default: 'movie'
         type: string
       
+      # إعدادات وضع المسلسلات
       series_videos:
         description: 'بيانات المسلسلات بصيغة JSON حتى 10 ملفات. مثال: [{"url":"رابط1","name":"الحلقة1"},{"url":"رابط2","name":"الحلقة2"}]'
         required: false
@@ -52,24 +54,18 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 90  # لدعم الملفات الكبيرة
     
     steps:
       - name: 🛠️ إعداد البيئة
         uses: actions/checkout@v4
-        
-      - name: ⚡ تثبيت ffmpeg (لعرض تفاصيل الفيديو: المدة والحجم)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          ffmpeg -version
         
       - name: 🐍 تثبيت بايثون 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: 📦 تثبيت المكتبات المطلوبة
+      - name: 📦 تثبيت المكتبات
         run: |
           pip install --upgrade pip setuptools
           pip install telethon requests "pysocks>=1.6.8" "cryptography>=3.0"
@@ -90,7 +86,7 @@ jobs:
           fi
           echo "✅ تم التحقق من الأسرار بنجاح"
       
-      - name: 🚀 تشغيل سكريبت الرفع (مع تفاصيل الفيديو)
+      - name: 🚀 تشغيل سكريبت الرفع
         env:
           MODE: ${{ github.event.inputs.mode }}
           CHANNEL: ${{ github.event.inputs.channel }}
@@ -114,7 +110,6 @@ jobs:
           echo "🎉 تمت عملية الرفع بنجاح!"
           echo "الوضع: ${{ github.event.inputs.mode }}"
           echo "القناة: ${{ github.event.inputs.channel }}"
-          echo "التفاصيل: المدة والحجم ظاهرين في البوست"
           echo "=========================================="
       
       - name: ❌ فشل العملية
