@@ -4,8 +4,7 @@ import sys
 import asyncio
 import tempfile
 import mimetypes
-import subprocess
-import json
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
@@ -19,7 +18,6 @@ from telethon.errors.rpcerrorlist import (
 import requests
 import ssl
 import urllib3
-import time
 
 # تجاوز SSL عند التفعيل
 if os.getenv('SKIP_SSL_VERIFY', 'false').lower() == 'true':
@@ -71,7 +69,7 @@ async def convert_webp_to_jpg(webp_path):
         return webp_path
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف بسرعات قصوى مع فحص الحجم"""
+    """تنزيل الملف بسرعات قصوى مع فحص الحجم وعرض تقدم متجدد"""
     url = url.strip()
     
     if not url:
@@ -121,41 +119,41 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 base_name = base_name[:-4]
             filepath = Path(save_dir) / f"{base_name}.mp4"
         
+        # استخراج الحجم الكلي
+        total_size = int(response.headers.get('content-length', 0))
+        if total_size == 0:
+            total_size = 1  # تجنب قسمة على صفر
+        
         # تنزيل بقطع كبيرة (64 كيلوبايت)
         CHUNK_SIZE = 65536
         with open(filepath, 'wb') as f:
+            current_size = 0
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if chunk:
                     f.write(chunk)
-                    total_size += len(chunk)
+                    chunk_size = len(chunk)
+                    current_size += chunk_size
+                    elapsed = time.time() - start_time
+                    speed = current_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
+                    percent = (current_size / total_size) * 100
                     
-                    if not is_image and total_size > MAX_VIDEO_SIZE_BYTES * 1.05:
-                        f.close()
-                        filepath.unlink(missing_ok=True)
-                        elapsed = time.time() - start_time
-                        speed = total_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
-                        raise Exception(
-                            f"توقف التنزيل: الحجم تجاوز {MAX_VIDEO_SIZE_MB} ميجابايت!\n"
-                            f"الحجم الحالي: {total_size / 1024 / 1024:.2f} ميجابايت | السرعة: {speed:.2f} ميجابايت/ثانية"
-                        )
-        
-        if total_size == 0:
-            raise Exception("الملف فارغ بعد التنزيل")
-        
-        elapsed = time.time() - start_time
-        speed = total_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
+                    # عرض التقدم في سطر واحد
+                    print(
+                        f"\r   تنزيل: {filepath.name} | {current_size / 1024 / 1024:.2f}MB/{total_size / 1024 / 1024:.2f}MB | {percent:.1f}% | {speed:.2f}MB/s",
+                        end='', flush=True
+                    )
+            
+            # إظهار النتيجة النهائية
+            print(f"\n✅ تم التنزيل: {filepath.name} ({current_size / 1024 / 1024:.2f} ميجابايت) | السرعة: {speed:.2f} ميجابايت/ثانية ✓")
         
         if not is_image:
-            file_size_mb = total_size / 1024 / 1024
-            if total_size > MAX_VIDEO_SIZE_BYTES:
+            file_size_mb = current_size / 1024 / 1024
+            if current_size > MAX_VIDEO_SIZE_BYTES:
                 filepath.unlink(missing_ok=True)
                 raise Exception(
                     f"حجم الفيديو ({file_size_mb:.2f} ميجابايت) يتجاوز الحد المسموح (1999 ميجابايت).\n"
                     f"الحل: قسّم الفيديو إلى أجزاء أصغر أو استخدم جودة أقل."
                 )
-            print(f"✅ تم التنزيل: {filepath.name} ({file_size_mb:.2f} ميجابايت) | السرعة: {speed:.2f} ميجابايت/ثانية ✓")
-        else:
-            print(f"✅ تم التنزيل: {filepath.name} ({total_size / 1024 / 1024:.2f} ميجابايت) | السرعة: {speed:.2f} ميجابايت/ثانية")
         
         return str(filepath)
     
@@ -237,11 +235,19 @@ async def resolve_channel(client, channel_input):
             "  • كود الدعوة: +Abc123"
         )
 
+def upload_progress(current, total):
+    """عرض تقدم الرفع في سطر واحد"""
+    percent = (current / total) * 100
+    print(
+        f"\r   رفع: | {current / 1024 / 1024:.2f}MB/{total / 1024 / 1024:.2f}MB | {percent:.1f}%",
+        end='', flush=True
+    )
+
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تفاصيل الفيديو)")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي (مع تقدم متجدد)")
     print("="*70)
-    print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى")
+    print(f"⚡ السرعة: تنزيل ورفع بسرعات قصوى مع عرض التقدم في سطر واحد")
     print(f"📦 الحد الأقصى للفيديو: 1999 ميجابايت (من 2000 الرسمي)")
     print("="*70)
     
@@ -337,12 +343,12 @@ async def main():
             
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط مع تفاصيل الفيديو
+            # ✅ الحل النهائي: رفع كـ فيديو مع صورة مصغرة
             if mode == 'movie':
-                print("\n⚡ جاري الرفع كـ بوست مدمج مع تفاصيل الفيديو...")
+                print("\n⚡ جاري الرفع (الفيديو مع الصورة المصغرة)...")
                 start_upload = time.time()
                 
-                # استخراج معلومات الفيديو (المدة، العرض، الارتفاع)
+                # استخراج معلومات الفيديو
                 print("🔄 استخراج معلومات الفيديو...")
                 duration, width, height = get_video_info(video_path)
                 
@@ -356,8 +362,8 @@ async def main():
                     )
                 ]
                 
-                # رفع الفيديو كـ مستند مع تفاصيل الفيديو
-                print("🔄 رفع الفيديو مع تفاصيل المدة والحجم...")
+                # رفع الفيديو مع الصورة كـ صورة مصغرة
+                print("🔄 رفع الفيديو مع الصورة المصغرة...")
                 await client.send_file(
                     entity,
                     video_path,
@@ -365,21 +371,21 @@ async def main():
                     caption=caption,
                     supports_streaming=True,
                     parse_mode='html',
-                    force_document=True,  # ← المفتاح السري لعرض تفاصيل الملف
+                    force_document=False,  # ← المفتاح السري لعرض تفاصيل الملف
                     attributes=video_attributes,
                     part_size=1024 * 1024,
-                    progress_callback=None
+                    progress_callback=upload_progress
                 )
                 
                 upload_time = time.time() - start_upload
                 video_size = Path(video_path).stat().st_size / 1024 / 1024
                 upload_speed = video_size / upload_time if upload_time > 0 else 0
                 
-                print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
+                print(f"\n✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
                 print("\n🎉 النتيجة: فيديو مع تفاصيل المدة والحجم (مثل الصورة التي أرسلتها)")
             
             else:  # series
-                print("\n⚡ جاري رفع ملفات المسلسلات كـ مستندات مع تفاصيل الفيديو...")
+                print("\n⚡ جاري رفع ملفات المسلسلات...")
                 start_upload = time.time()
                 
                 for file_path in media_files:
@@ -400,17 +406,17 @@ async def main():
                         caption=caption,
                         supports_streaming=True,
                         parse_mode='html',
-                        force_document=True,
+                        force_document=False,
                         attributes=attributes,
                         part_size=1024 * 1024,
-                        progress_callback=None
+                        progress_callback=upload_progress
                     )
                 
                 upload_time = time.time() - start_upload
                 total_size = sum(Path(f).stat().st_size for f in media_files) / 1024 / 1024
                 upload_speed = total_size / upload_time if upload_time > 0 else 0
                 
-                print(f"✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
+                print(f"\n✅ تم الرفع بنجاح! | السرعة: {upload_speed:.2f} ميجابايت/ثانية | الوقت: {upload_time:.1f} ثانية")
             
             print("\n" + "="*70)
             print("🎉 تمت العملية بنجاح!")
@@ -448,7 +454,7 @@ if __name__ == "__main__":
         error_msg = str(e).lower()
         if "media" in error_msg and "group" in error_msg:
             print("\n💡 الحل النهائي:", file=sys.stderr)
-            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ مستند مع تفاصيل الفيديو", file=sys.stderr)
+            print("   • تم تطبيق الطريقة الصحيحة: رفع كـ فيديو مع صورة مصغرة", file=sys.stderr)
             print("   • تأكد من تثبيت ffmpeg في بيئة جيتهاب", file=sys.stderr)
         elif "size" in error_msg or "حجم" in error_msg:
             print("\n💡 الحل الفوري:", file=sys.stderr)
