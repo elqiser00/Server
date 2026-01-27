@@ -241,50 +241,43 @@ async def main():
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ منشور مدمج (الصورة على اليسار + الفيديو على اليمين)
+            # ✅ الحل النهائي: رفع كـ مجموعة وسائط (الطريقة المدعومة في جميع الإصدارات)
             if mode == 'movie':
-                print("⚡ جاري الرفع كـ منشور مدمج (صورة على اليسار + فيديو على اليمين)...")
+                print("⚡ جاري الرفع كـ بوست مدمج (صورة على اليسار + فيديو على اليمين)...")
                 
-                # 1. رفع الصورة أولاً (كمنشور منفصل)
-                print("🔄 رفع الصورة كـ منشور...")
-                photo_msg = await client.send_file(
-                    entity,
-                    image_path,
-                    caption="",
-                    supports_streaming=False
-                )
+                # تحويل WebP تلقائياً إلى JPG (مطلوب لتيليجرام)
+                if image_path.lower().endswith('.webp'):
+                    jpg_path = str(Path(image_path).with_suffix('.jpg'))
+                    Path(image_path).rename(jpg_path)
+                    image_path = jpg_path
+                    print(f"🔄 تم تحويل امتداد الصورة من WebP إلى JPG: {Path(jpg_path).name}")
                 
-                # 2. رفع الفيديو (كمنشور منفصل)
-                print("🔄 رفع الفيديو كـ منشور...")
-                video_msg = await client.send_file(
+                # الترتيب المهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
+                media_list = [image_path, video_path]
+                
+                # الطريقة الصحيحة المدعومة في جميع إصدارات Telethon
+                await client.send_file(
                     entity,
-                    video_path,
+                    media_list,  # قائمة الملفات تُنشئ تلقائياً "مجموعة وسائط"
                     caption=caption,
-                    supports_streaming=True
-                )
-                
-                # 3. توجيه الصورة والفيديو إلى منشور واحد (الحل السحري)
-                print("🔄 توجيه الصورة والفيديو إلى منشور واحد...")
-                await client.edit_message(
-                    entity,
-                    photo_msg.id,
-                    file=video_msg.file,
-                    caption=caption,
-                    supports_streaming=True
+                    parse_mode='html',
+                    supports_streaming=True,
+                    force_document=False
                 )
                 
                 print("\n✅ تم الرفع بنجاح!")
                 print("🎉 الشكل: صورة على اليسار + فيديو على اليمين في منشور واحد")
             
             else:  # series
-                print("⚡ جاري رفع ملفات المسلسلات...")
-                for i, file_path in enumerate(media_files, 1):
-                    await client.send_file(
-                        entity,
-                        file_path,
-                        caption=f"{caption} | الحلقة {i}",
-                        supports_streaming=True
-                    )
+                print("⚡ جاري رفع ملفات المسلسلات كـ مجموعة وسائط...")
+                await client.send_file(
+                    entity,
+                    media_files,
+                    caption=caption,
+                    parse_mode='html',
+                    supports_streaming=True,
+                    force_document=False
+                )
                 print("\n✅ تم الرفع بنجاح!")
             
             print("\n" + "="*70)
