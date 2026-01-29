@@ -9,11 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.errors.rpcerrorlist import (
-    UserAlreadyParticipantError, InviteHashInvalidError,
-    InviteHashExpiredError, ChannelPrivateError
-)
+from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
@@ -21,7 +17,6 @@ import urllib3
 # تجاوز تحذيرات SSL تلقائياً
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ⚠️ الحد الرسمي لتيليجرام: 2000 ميجابايت
 MAX_VIDEO_SIZE_MB = 1999.0
 MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 
@@ -30,12 +25,11 @@ def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف مع تخطي SSL تلقائياً بدون عرض نسب مئوية"""
+    """تنزيل الملف مع تخطي SSL تلقائياً"""
     url = url.strip()
     if not url:
         raise Exception("رابط فارغ بعد التنقية!")
     
-    # محاولة التنزيل مع تخطي SSL تلقائي عند الفشل
     for attempt in range(2):
         try:
             verify_ssl = (attempt == 0)
@@ -50,7 +44,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             if 'github.com' in url and os.getenv('REPO_TOKEN'):
                 headers['Authorization'] = f'token {os.getenv("REPO_TOKEN")}'
             
-            # محاولة الاتصال مع تخطي SSL عند الحاجة
             start_time = time.time()
             response = requests.get(
                 url,
@@ -62,24 +55,21 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             )
             response.raise_for_status()
             
-            # استخراج الحجم الكلي
             total_size = int(response.headers.get('content-length', 0)) or 1
             
-            # تحديد الامتداد
             if is_image:
                 ext = os.path.splitext(urlparse(url).path)[1].lower()
                 if not ext or len(ext) > 5 or ext in ['.php', '.asp', '.html']:
                     content_type = response.headers.get('content-type', '')
                     ext = mimetypes.guess_extension(content_type.split(';')[0].strip()) or '.jpg'
                     ext = ''.join(c for c in ext if c.isalnum() or c == '.')
-                filepath = Path(save_dir) / f"Logo{ext}"
+                filepath = Path(save_dir) / f"thumb{ext}"
             else:
                 base_name = sanitize_filename(base_name)
                 if base_name.lower().endswith('.mp4'):
                     base_name = base_name[:-4]
                 filepath = Path(save_dir) / f"{base_name}.mp4"
             
-            # التنزيل بدون عرض تقدم
             CHUNK_SIZE = 65536
             with open(filepath, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
@@ -93,7 +83,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
         
         except (requests.exceptions.SSLError, ssl.SSLError, ssl.CertificateError) as e:
             if attempt == 0:
-                continue  # إعادة المحاولة مع تعطيل SSL
+                continue
             else:
                 raise Exception(f"فشل التنزيل حتى بعد تعطيل SSL")
         except Exception as e:
@@ -105,12 +95,10 @@ async def resolve_channel(client, channel_input):
     """معالجة ذكية لجميع أنواع روابط القنوات"""
     channel_input = channel_input.strip()
     
-    # تنظيف الرابط
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
         if channel_input.startswith(prefix):
             channel_input = channel_input[len(prefix):]
     
-    # استخراج كود الدعوة
     invite_hash = None
     if '+' in channel_input:
         parts = channel_input.split('+')
@@ -119,12 +107,10 @@ async def resolve_channel(client, channel_input):
     
     if invite_hash and len(invite_hash) >= 5:
         try:
-            # إصلاح الخطأ: إزالة المسافات الزائدة في الرابط
-            full_url = f"https://t.me/joinchat/{invite_hash}"  # ← تم إصلاح المسافات هنا
+            full_url = f"https://t.me/joinchat/{invite_hash}"
             entity = await client.get_entity(full_url)
             return entity
         except:
-            # البحث في القنوات المنضمة (كـ صاحب القناة)
             async for dialog in client.iter_dialogs(limit=10):
                 if dialog.is_channel and not dialog.is_group:
                     return dialog.entity
@@ -133,12 +119,11 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار النهائي")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار المُحسّن")
     print("="*70)
-    print("✅ تخطي SSL تلقائياً | ✅ مراحل واضحة بدون نسب مئوية")
+    print("✅ تخطي SSL تلقائياً | ✅ فيديو بخلفية (Thumbnail)")
     print("="*70)
     
-    # التحقق من المتغيرات الأساسية
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
     for var in required:
         if not os.getenv(var, '').strip():
@@ -154,7 +139,6 @@ async def main():
     if not channel:
         raise Exception("حقل القناة فارغ!")
     
-    # تسجيل الدخول
     client = TelegramClient(
         StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
         int(os.getenv('TELEGRAM_API_ID')),
@@ -177,22 +161,36 @@ async def main():
                 
                 print("\n🎬 جاري تنزيل الملفات...")
                 
-                # تنزيل الصورة
-                print("جاري تحميل الصوره", end='', flush=True)
-                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'Logo', is_image=True)
+                # تنزيل الصورة (للـ thumbnail)
+                print("جاري تحميل الصورة", end='', flush=True)
+                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'thumb', is_image=True)
                 print(" ✅")
-                print(f"   تم التحميل: Logo (الحجم: {img_size:.2f}MB | السرعة: {img_speed:.2f}MB/s)")
+                print(f"   تم التحميل: thumb (الحجم: {img_size:.2f}MB)")
+                
+                # تحويل WebP إلى JPG لو لزم الأمر (التيليجرام يفضل JPG للـ thumbnails)
+                if image_path.lower().endswith('.webp'):
+                    try:
+                        from PIL import Image
+                        jpg_path = str(Path(image_path).with_suffix('.jpg'))
+                        img = Image.open(image_path).convert('RGB')
+                        img.save(jpg_path, 'JPEG', quality=95)
+                        image_path = jpg_path
+                        print(f"   تم تحويل WebP إلى JPG")
+                    except ImportError:
+                        # Pillow غير مثبت، نستخدم PIL المدمج أو نتركها كما هي
+                        pass
                 
                 # تنزيل الفيديو
                 print("جاري تحميل الفيديو", end='', flush=True)
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(" ✅")
-                print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB | السرعة: {vid_speed:.2f}MB/s)")
+                print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
                 
-                print(f"\n✅ جاهز للرفع: صورة + فيديو ({Path(video_path).name})")
+                print(f"\n✅ جاهز للرفع: فيديو مع خلفية (thumbnail)")
             
             else:  # series
                 try:
+                    import json
                     series = json.loads(os.getenv('SERIES_VIDEOS', '[]'))
                 except Exception as e:
                     raise Exception(f"خطأ في تنسيق JSON: {str(e)}")
@@ -230,32 +228,31 @@ async def main():
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
             
-            # ✅ الحل النهائي: رفع كـ مجموعة وسائط
             if mode == 'movie':
-                print("جاري رفع البوست (الصوره على الشمال والفيديو على اليمين)", end='', flush=True)
+                print("جاري رفع الفيديو مع الخلفية...", end='', flush=True)
                 
-                # تحويل WebP تلقائياً إلى JPG
-                if image_path.lower().endswith('.webp'):
-                    jpg_path = str(Path(image_path).with_suffix('.jpg'))
-                    Path(image_path).rename(jpg_path)
-                    image_path = jpg_path
-                
-                # الترتيب المهم: الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
-                media_list = [image_path, video_path]
-                
-                # الرفع بدون عرض تقدم
+                # ✅ الحل الرئيسي: إرسال الفيديو مع thumb منفصل
+                # هذا يجعل الفيديو يظهر بخلفية/برواز كما في الصورة الأولى
                 await client.send_file(
                     entity,
-                    media_list,
+                    video_path,           # الفيديو الرئيسي
+                    thumb=image_path,     # ✅ الصورة كـ thumbnail (الخلفية)
                     caption=caption,
                     parse_mode='html',
                     supports_streaming=True,
-                    force_document=False
+                    force_document=False,
+                    # مهم: نضيف attributes لتحسين عرض الفيديو
+                    attributes=[
+                        DocumentAttributeVideo(
+                            supports_streaming=True,
+                            # يمكن إضافة المدة والأبعاد لو عندك معلومات عن الفيديو
+                        )
+                    ]
                 )
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين في منشور واحد")
+                print("🎉 الشكل: فيديو بخلفية (Thumbnail) كما في الصورة الأولى")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
