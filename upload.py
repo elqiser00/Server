@@ -119,9 +119,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album الطبيعي")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album")
     print("="*70)
-    print("✅ صورة على اليسار | ✅ فيديو على اليمين (بـ thumbnail الداخلي)")
+    print("✅ صورة على اليسار | ✅ فيديو على اليمين")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -229,54 +229,23 @@ async def main():
             if mode == 'movie':
                 print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
                 
-                # ✅ الحل الصح: Album بدون thumb - الفيديو يستخدم thumbnail الداخلي
+                # ✅ الحل: استخدام send_file مع مسارات الملفات مباشرة
+                # Telethon هيرفعهم كـ Album تلقائياً
                 
                 # رفع الصورة والفيديو كـ Album
-                # الصورة تكون InputMediaUploadedPhoto
-                # الفيديو يكون InputMediaUploadedDocument بدون thumb (يستخدم الداخلي)
-                
-                from telethon.tl.functions.messages import SendMultiMediaRequest
-                from telethon.tl.types import InputSingleMedia, InputMediaUploadedPhoto, InputMediaUploadedDocument
-                
-                # رفع ملفات
-                uploaded_photo = await client.upload_file(image_path)
-                uploaded_video = await client.upload_file(video_path)
-                
-                # إنشاء media للصورة
-                photo_media = InputMediaUploadedPhoto(uploaded_photo)
-                
-                # إنشاء media للفيديو ✅ بدون thumb (هيستخدم الداخلي)
-                video_media = InputMediaUploadedDocument(
-                    file=uploaded_video,
-                    mime_type='video/mp4',
-                    attributes=[],  # Telethon يملاها تلقائياً
-                    # ❌ لا thumb هنا - الفيديو هيستخدم thumbnail الداخلي
-                    force_file=False
+                # الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
+                await client.send_file(
+                    entity,
+                    file=[image_path, video_path],  # قائمة = Album
+                    caption=caption,
+                    parse_mode='html',
+                    force_document=False,  # فيديو كـ فيديو مش ملف
+                    clear_draft=False
                 )
-                
-                # إنشاء قائمة Album
-                media_list = [
-                    InputSingleMedia(
-                        media=photo_media,
-                        message=caption,  # الكابشن على الصورة
-                        entities=[]
-                    ),
-                    InputSingleMedia(
-                        media=video_media,
-                        message='',  # مفيش كابشن على الفيديو
-                        entities=[]
-                    )
-                ]
-                
-                # إرسال Album
-                await client(SendMultiMediaRequest(
-                    peer=entity,
-                    multi_media=media_list
-                ))
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين (بـ thumbnail الداخلي)")
+                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
