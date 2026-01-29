@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.utils import get_input_peer
 import requests
 import ssl
 import urllib3
@@ -225,20 +226,18 @@ async def main():
             
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
+            # ✅ تحويل Entity إلى InputPeer
+            input_peer = get_input_peer(entity)
             
             if mode == 'movie':
                 print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
                 
                 # ✅ الحل: Album بـ 2 عنصر (صورة + فيديو)
-                # الصورة تكون InputMediaUploadedPhoto
-                # الفيديو يكون InputMediaUploadedDocument مع thumb
-                
                 from telethon.tl.functions.messages import SendMultiMediaRequest
                 from telethon.tl.types import (
                     InputSingleMedia, 
                     InputMediaUploadedPhoto, 
-                    InputMediaUploadedDocument,
-                    DocumentAttributeVideo
+                    InputMediaUploadedDocument
                 )
                 
                 # 1. رفع البوستر كـ صورة
@@ -275,9 +274,9 @@ async def main():
                     )
                 ]
                 
-                # إرسال Album
+                # إرسال Album مع InputPeer
                 await client(SendMultiMediaRequest(
-                    peer=entity,
+                    peer=input_peer,  # ✅ استخدم InputPeer هنا
                     multi_media=media_list
                 ))
                 
