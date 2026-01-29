@@ -9,10 +9,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
+from PIL import Image
 
 # تجاوز تحذيرات SSL تلقائياً
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -63,7 +63,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                     content_type = response.headers.get('content-type', '')
                     ext = mimetypes.guess_extension(content_type.split(';')[0].strip()) or '.jpg'
                     ext = ''.join(c for c in ext if c.isalnum() or c == '.')
-                filepath = Path(save_dir) / f"thumb{ext}"
+                filepath = Path(save_dir) / f"poster{ext}"
             else:
                 base_name = sanitize_filename(base_name)
                 if base_name.lower().endswith('.mp4'):
@@ -119,9 +119,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار المُحسّن")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album")
     print("="*70)
-    print("✅ تخطي SSL تلقائياً | ✅ فيديو بخلفية (Thumbnail)")
+    print("✅ صورة على اليسار | ✅ فيديو على اليمين مع Thumbnail")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -161,23 +161,22 @@ async def main():
                 
                 print("\n🎬 جاري تنزيل الملفات...")
                 
-                # تنزيل الصورة (للـ thumbnail)
-                print("جاري تحميل الصورة", end='', flush=True)
-                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'thumb', is_image=True)
+                # تنزيل الصورة (البوستر)
+                print("جاري تحميل البوستر", end='', flush=True)
+                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'poster', is_image=True)
                 print(" ✅")
-                print(f"   تم التحميل: thumb (الحجم: {img_size:.2f}MB)")
+                print(f"   تم التحميل: poster (الحجم: {img_size:.2f}MB)")
                 
-                # تحويل WebP إلى JPG لو لزم الأمر (التيليجرام يفضل JPG للـ thumbnails)
+                # تحويل WebP إلى JPG
                 if image_path.lower().endswith('.webp'):
                     try:
-                        from PIL import Image
                         jpg_path = str(Path(image_path).with_suffix('.jpg'))
                         img = Image.open(image_path).convert('RGB')
                         img.save(jpg_path, 'JPEG', quality=95)
                         image_path = jpg_path
                         print(f"   تم تحويل WebP إلى JPG")
-                    except ImportError:
-                        pass
+                    except Exception as e:
+                        print(f"   ⚠️ لم يتم تحويل WebP: {e}")
                 
                 # تنزيل الفيديو
                 print("جاري تحميل الفيديو", end='', flush=True)
@@ -185,7 +184,7 @@ async def main():
                 print(" ✅")
                 print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
                 
-                print(f"\n✅ جاهز للرفع: فيديو مع خلفية (thumbnail)")
+                print(f"\n✅ جاهز للرفع: Album (بوستر + فيديو)")
             
             else:  # series
                 try:
@@ -228,23 +227,63 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع الفيديو مع الخلفية...", end='', flush=True)
+                print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
                 
-                # ✅ الحل: إرسال الفيديو مع thumb منفصل بدون attributes معقدة
-                # Telethon يستخرج المعلومات تلقائياً من الفيديو
-                await client.send_file(
-                    entity,
-                    video_path,           # الفيديو الرئيسي
-                    thumb=image_path,     # ✅ الصورة كـ thumbnail (الخلفية)
-                    caption=caption,
-                    parse_mode='html',
-                    supports_streaming=True,
-                    force_document=False
+                # ✅ الحل: Album بـ 2 عنصر (صورة + فيديو)
+                # الصورة تكون InputMediaUploadedPhoto
+                # الفيديو يكون InputMediaUploadedDocument مع thumb
+                
+                from telethon.tl.functions.messages import SendMultiMediaRequest
+                from telethon.tl.types import (
+                    InputSingleMedia, 
+                    InputMediaUploadedPhoto, 
+                    InputMediaUploadedDocument,
+                    DocumentAttributeVideo
                 )
+                
+                # 1. رفع البوستر كـ صورة
+                uploaded_photo = await client.upload_file(image_path)
+                photo_media = InputMediaUploadedPhoto(uploaded_photo)
+                
+                # 2. رفع الفيديو مع استخدام البوستر كـ Thumbnail
+                uploaded_video = await client.upload_file(video_path)
+                
+                # قراءة البوستر كـ bytes للـ thumbnail
+                with open(image_path, 'rb') as f:
+                    thumb_bytes = f.read()
+                
+                # إنشاء الفيديو مع attributes فارغة (Telethon يملاها تلقائياً)
+                video_media = InputMediaUploadedDocument(
+                    file=uploaded_video,
+                    mime_type='video/mp4',
+                    attributes=[],  # Telethon يستخرج المدة والأبعاد تلقائياً
+                    thumb=thumb_bytes,  # ✅ البوستر كـ thumbnail للفيديو
+                    force_file=False
+                )
+                
+                # إنشاء قائمة Album
+                media_list = [
+                    InputSingleMedia(
+                        media=photo_media,
+                        message=caption,  # الكابشن على الصورة
+                        entities=[]
+                    ),
+                    InputSingleMedia(
+                        media=video_media,
+                        message='',  # مفيش كابشن على الفيديو
+                        entities=[]
+                    )
+                ]
+                
+                # إرسال Album
+                await client(SendMultiMediaRequest(
+                    peer=entity,
+                    multi_media=media_list
+                ))
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: فيديو بخلفية (Thumbnail) كما في الصورة الأولى")
+                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين مع نفس الـ Thumbnail")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
