@@ -230,37 +230,18 @@ async def main():
             if mode == 'movie':
                 print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
                 
-                # ✅ الحل: استخدام send_file مع album=True (الطريقة السهلة والمضمونة)
-                # رفع الصورة والفيديو كـ Album، والفيديو هياخد الصورة كـ thumbnail تلقائياً
+                # ✅ الحل النهائي: استخدام send_file مع مسارات الملفات مباشرة
+                # Telethon هيرفعهم كـ Album تلقائياً
                 
-                from telethon.tl.types import InputMediaPhoto, InputMediaDocument
-                
-                # رفع الملفات الأول
-                uploaded_image = await client.upload_file(image_path)
-                uploaded_video = await client.upload_file(video_path)
-                
-                # قراءة الصورة كـ bytes للـ thumbnail
-                with open(image_path, 'rb') as f:
-                    thumb_bytes = f.read()
-                
-                # إنشاء InputMedia للصورة
-                photo_media = types.InputMediaUploadedPhoto(uploaded_image)
-                
-                # إنشاء InputMedia للفيديو مع thumbnail
-                video_media = types.InputMediaUploadedDocument(
-                    file=uploaded_video,
-                    mime_type='video/mp4',
-                    attributes=[],
-                    thumb=types.InputFileLocal(image_path) if os.path.exists(image_path) else None,
-                    force_file=False
-                )
-                
-                # إرسال Album باستخدام send_file مباشرة
+                # نرفع الصورة والفيديو كـ Album
+                # الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
                 await client.send_file(
                     entity,
-                    file=[photo_media, video_media],
-                    caption=caption,
-                    parse_mode='html'
+                    file=[image_path, video_path],  # ✅ مسارات الملفات مباشرة
+                    caption=caption,  # الكابشن على أول عنصر (الصورة)
+                    parse_mode='html',
+                    force_document=False,  # فيديو كـ فيديو مش ملف
+                    clear_draft=False
                 )
                 
                 print(" ✅")
