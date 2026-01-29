@@ -37,8 +37,6 @@ on:
         required: false
         default: 'movie'
         type: string
-      
-      # لا حاجة لـ skip_ssl - يعمل تلقائياً الآن!
 
 jobs:
   upload:
@@ -53,6 +51,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      
+      - name: 🎬 تثبيت FFmpeg (مهم لاستخراج Thumbnail)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -1
+          echo "✅ FFmpeg تم التثبيت بنجاح"
       
       - name: 📦 تثبيت المكتبات
         run: |
