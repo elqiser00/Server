@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.utils import get_input_peer
+from telethon.tl import types
 import requests
 import ssl
 import urllib3
@@ -226,63 +226,46 @@ async def main():
             
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
-            # ✅ تحويل Entity إلى InputPeer
-            input_peer = get_input_peer(entity)
             
             if mode == 'movie':
                 print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
                 
-                # ✅ الحل: Album بـ 2 عنصر (صورة + فيديو)
-                from telethon.tl.functions.messages import SendMultiMediaRequest
-                from telethon.tl.types import (
-                    InputSingleMedia, 
-                    InputMediaUploadedPhoto, 
-                    InputMediaUploadedDocument
-                )
+                # ✅ الحل: استخدام send_file مع album=True (الطريقة السهلة والمضمونة)
+                # رفع الصورة والفيديو كـ Album، والفيديو هياخد الصورة كـ thumbnail تلقائياً
                 
-                # 1. رفع البوستر كـ صورة
-                uploaded_photo = await client.upload_file(image_path)
-                photo_media = InputMediaUploadedPhoto(uploaded_photo)
+                from telethon.tl.types import InputMediaPhoto, InputMediaDocument
                 
-                # 2. رفع الفيديو مع استخدام البوستر كـ Thumbnail
+                # رفع الملفات الأول
+                uploaded_image = await client.upload_file(image_path)
                 uploaded_video = await client.upload_file(video_path)
                 
-                # قراءة البوستر كـ bytes للـ thumbnail
+                # قراءة الصورة كـ bytes للـ thumbnail
                 with open(image_path, 'rb') as f:
                     thumb_bytes = f.read()
                 
-                # إنشاء الفيديو مع attributes فارغة (Telethon يملاها تلقائياً)
-                video_media = InputMediaUploadedDocument(
+                # إنشاء InputMedia للصورة
+                photo_media = types.InputMediaUploadedPhoto(uploaded_image)
+                
+                # إنشاء InputMedia للفيديو مع thumbnail
+                video_media = types.InputMediaUploadedDocument(
                     file=uploaded_video,
                     mime_type='video/mp4',
-                    attributes=[],  # Telethon يستخرج المدة والأبعاد تلقائياً
-                    thumb=thumb_bytes,  # ✅ البوستر كـ thumbnail للفيديو
+                    attributes=[],
+                    thumb=types.InputFileLocal(image_path) if os.path.exists(image_path) else None,
                     force_file=False
                 )
                 
-                # إنشاء قائمة Album
-                media_list = [
-                    InputSingleMedia(
-                        media=photo_media,
-                        message=caption,  # الكابشن على الصورة
-                        entities=[]
-                    ),
-                    InputSingleMedia(
-                        media=video_media,
-                        message='',  # مفيش كابشن على الفيديو
-                        entities=[]
-                    )
-                ]
-                
-                # إرسال Album مع InputPeer
-                await client(SendMultiMediaRequest(
-                    peer=input_peer,  # ✅ استخدم InputPeer هنا
-                    multi_media=media_list
-                ))
+                # إرسال Album باستخدام send_file مباشرة
+                await client.send_file(
+                    entity,
+                    file=[photo_media, video_media],
+                    caption=caption,
+                    parse_mode='html'
+                )
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين مع نفس الـ Thumbnail")
+                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
