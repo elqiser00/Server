@@ -177,7 +177,6 @@ async def main():
                         image_path = jpg_path
                         print(f"   تم تحويل WebP إلى JPG")
                     except ImportError:
-                        # Pillow غير مثبت، نستخدم PIL المدمج أو نتركها كما هي
                         pass
                 
                 # تنزيل الفيديو
@@ -231,8 +230,8 @@ async def main():
             if mode == 'movie':
                 print("جاري رفع الفيديو مع الخلفية...", end='', flush=True)
                 
-                # ✅ الحل الرئيسي: إرسال الفيديو مع thumb منفصل
-                # هذا يجعل الفيديو يظهر بخلفية/برواز كما في الصورة الأولى
+                # ✅ الحل: إرسال الفيديو مع thumb منفصل بدون attributes معقدة
+                # Telethon يستخرج المعلومات تلقائياً من الفيديو
                 await client.send_file(
                     entity,
                     video_path,           # الفيديو الرئيسي
@@ -240,14 +239,7 @@ async def main():
                     caption=caption,
                     parse_mode='html',
                     supports_streaming=True,
-                    force_document=False,
-                    # مهم: نضيف attributes لتحسين عرض الفيديو
-                    attributes=[
-                        DocumentAttributeVideo(
-                            supports_streaming=True,
-                            # يمكن إضافة المدة والأبعاد لو عندك معلومات عن الفيديو
-                        )
-                    ]
+                    force_document=False
                 )
                 
                 print(" ✅")
