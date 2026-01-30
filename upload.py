@@ -5,7 +5,6 @@ import asyncio
 import tempfile
 import mimetypes
 import time
-import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
@@ -92,29 +91,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 Path(filepath).unlink(missing_ok=True)
             raise Exception(f"فشل التنزيل: {str(e)}")
 
-def extract_video_thumbnail(video_path, output_path):
-    """استخراج Thumbnail من الفيديو باستخدام FFmpeg"""
-    try:
-        cmd = [
-            'ffmpeg',
-            '-i', video_path,
-            '-ss', '00:00:01',
-            '-vframes', '1',
-            '-q:v', '2',
-            '-y',
-            output_path
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0 and os.path.exists(output_path):
-            return True
-        else:
-            return False
-            
-    except Exception as e:
-        return False
-
 async def resolve_channel(client, channel_input):
     """معالجة ذكية لجميع أنواع روابط القنوات"""
     channel_input = channel_input.strip()
@@ -143,9 +119,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album الحقيقي")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار الأبعاد الطبيعية")
     print("="*70)
-    print("✅ صورة + فيديو جنب بعض | ✅ فيديو قابل للتشغيل")
+    print("✅ فيديو بـ thumbnail داخلي | ✅ أبعاد طبيعية")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -208,16 +184,6 @@ async def main():
                 print(" ✅")
                 print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
                 
-                # استخراج Thumbnail من الفيديو
-                print("جاري استخراج Thumbnail من الفيديو...", end='', flush=True)
-                video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
-                
-                if extract_video_thumbnail(video_path, video_thumb_path):
-                    print(" ✅")
-                else:
-                    print(" ⚠️")
-                    video_thumb_path = image_path
-                
                 print(f"\n✅ جاهز للرفع")
             
             else:  # series
@@ -260,34 +226,25 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
+                print("جاري رفع Album (أبعاد طبيعية)...", end='', flush=True)
                 
-                # ✅ الحل النهائي: استخدام album=True
-                # رفع الصورة والفيديو كـ Album حقيقي
-                
-                # الطريقة: نرفعهم كـ قائمة مع album=True
-                # الصورة تكون صورة عادية (InputMediaPhoto)
-                # الفيديو يكون فيديو (InputMediaDocument) مع supports_streaming
-                
-                from telethon.tl.types import InputMediaPhotoExternal, InputMediaDocumentExternal
-                
-                # رفع الصورة والفيديو كـ Album
-                # نستخدم send_file مع album=True显式
+                # ✅ الحل النهائي: Album بدون تحديد thumb
+                # Telegram هيسحب الـ thumbnail الداخلي من الفيديو تلقائياً
+                # والأبعاد هتكون طبيعية زي Mowgli 2025
                 
                 await client.send_file(
                     entity,
                     file=[image_path, video_path],
                     caption=caption,
                     parse_mode='html',
-                    album=True,                  # ✅ Album حقيقي (جنب بعض)
-                    force_document=False,        # فيديو كـ فيديو
-                    supports_streaming=True,     # قابل للتشغيل
-                    thumb=video_thumb_path       # Thumbnail للفيديو
+                    force_document=False,
+                    supports_streaming=True,
+                    # ❌ لا thumb هنا - خلي Telegram يستخدم الداخلي
                 )
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album)")
+                print("🎉 الشكل: أبعاد طبيعية + thumbnail داخلي")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
