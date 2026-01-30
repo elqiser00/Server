@@ -15,7 +15,8 @@ from telethon.tl.types import (
     DocumentAttributeVideo,
     InputMediaUploadedPhoto,
     InputMediaUploadedDocument,
-    InputSingleMedia
+    InputSingleMedia,
+    InputFile
 )
 from telethon.tl.functions.messages import SendMultiMediaRequest
 from telethon.utils import get_input_peer
@@ -284,15 +285,12 @@ async def main():
                 # ✅ رفع الملفات
                 uploaded_photo = await client.upload_file(image_path)
                 uploaded_video = await client.upload_file(video_path)
-                
-                # ✅ قراءة Thumbnail كـ bytes
-                with open(video_thumb_path, 'rb') as f:
-                    thumb_bytes = f.read()
+                uploaded_thumb = await client.upload_file(video_thumb_path)
                 
                 # ✅ إنشاء InputMedia للصورة
                 photo_media = InputMediaUploadedPhoto(uploaded_photo)
                 
-                # ✅ إنشاء InputMedia للفيديو مع كل التفاصيل
+                # ✅ إنشاء InputMedia للفيديو
                 video_media = InputMediaUploadedDocument(
                     file=uploaded_video,
                     mime_type='video/mp4',
@@ -304,7 +302,7 @@ async def main():
                             supports_streaming=True
                         )
                     ],
-                    thumb=thumb_bytes,
+                    thumb=uploaded_thumb,  # ✅ InputFile مش bytes
                     force_file=False
                 )
                 
@@ -312,12 +310,12 @@ async def main():
                 media_list = [
                     InputSingleMedia(
                         media=photo_media,
-                        message=caption,  # الكابشن على الصورة
+                        message=caption,
                         entities=[]
                     ),
                     InputSingleMedia(
                         media=video_media,
-                        message='',  # مفيش كابشن على الفيديو
+                        message='',
                         entities=[]
                     )
                 ]
