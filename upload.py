@@ -5,35 +5,33 @@ import asyncio
 import tempfile
 import mimetypes
 import time
+import subprocess
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
 from PIL import Image
 
-# تجاوز تحذيرات SSL تلقائياً
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 MAX_VIDEO_SIZE_MB = 1999.0
-MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 
 def sanitize_filename(filename):
-    """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
-    """تنزيل الملف مع تخطي SSL تلقائياً"""
     url = url.strip()
     if not url:
-        raise Exception("رابط فارغ بعد التنقية!")
+        raise Exception("رابط فارغ!")
     
     for attempt in range(2):
         try:
             verify_ssl = (attempt == 0)
-            
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': '*/*',
@@ -46,12 +44,8 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             
             start_time = time.time()
             response = requests.get(
-                url,
-                stream=True,
-                verify=verify_ssl,
-                headers=headers,
-                timeout=1200,
-                allow_redirects=True
+                url, stream=True, verify=verify_ssl, headers=headers,
+                timeout=1200, allow_redirects=True
             )
             response.raise_for_status()
             
@@ -62,7 +56,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 if not ext or len(ext) > 5 or ext in ['.php', '.asp', '.html']:
                     content_type = response.headers.get('content-type', '')
                     ext = mimetypes.guess_extension(content_type.split(';')[0].strip()) or '.jpg'
-                    ext = ''.join(c for c in ext if c.isalnum() or c == '.')
                 filepath = Path(save_dir) / f"poster{ext}"
             else:
                 base_name = sanitize_filename(base_name)
@@ -91,8 +84,54 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 Path(filepath).unlink(missing_ok=True)
             raise Exception(f"فشل التنزيل: {str(e)}")
 
+def get_video_info(video_path):
+    """استخراج معلومات الفيديو باستخدام ffprobe"""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height,duration',
+            '-show_entries', 'format=duration',
+            '-of', 'json', video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            width = data.get('streams', [{}])[0].get('width', 1280)
+            height = data.get('streams', [{}])[0].get('height', 720)
+            
+            # Duration من stream أو format
+            duration = data.get('streams', [{}])[0].get('duration')
+            if not duration:
+                duration = data.get('format', {}).get('duration', 0)
+            
+            return {
+                'width': width,
+                'height': height,
+                'duration': int(float(duration)) if duration else 0
+            }
+    except Exception as e:
+        print(f"⚠️ فشل استخراج معلومات الفيديو: {e}")
+    
+    return {'width': 1280, 'height': 720, 'duration': 0}
+
+def extract_video_thumbnail(video_path, output_path, time_sec=1):
+    """استخراج Thumbnail من الفيديو"""
+    try:
+        cmd = [
+            'ffmpeg', '-y', '-i', video_path,
+            '-ss', str(time_sec),
+            '-vframes', '1',
+            '-q:v', '1',  # أعلى جودة
+            '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return result.returncode == 0 and os.path.exists(output_path)
+    except Exception as e:
+        return False
+
 async def resolve_channel(client, channel_input):
-    """معالجة ذكية لجميع أنواع روابط القنوات"""
     channel_input = channel_input.strip()
     
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
@@ -119,9 +158,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار الأبعاد الطبيعية")
-    print("="*70)
-    print("✅ فيديو بـ thumbnail داخلي | ✅ أبعاد طبيعية")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Telegram Desktop")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -134,7 +171,7 @@ async def main():
     caption = os.getenv('CAPTION', '').replace('\\n', '\n').strip()
     
     if mode not in ['movie', 'series']:
-        raise Exception("الوضع غير مدعوم! اختر 'movie' أو 'series'")
+        raise Exception("الوضع غير مدعوم!")
     
     if not channel:
         raise Exception("حقل القناة فارغ!")
@@ -161,11 +198,10 @@ async def main():
                 
                 print("\n🎬 جاري تنزيل الملفات...")
                 
-                # تنزيل الصورة (البوستر)
                 print("جاري تحميل البوستر", end='', flush=True)
                 image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'poster', is_image=True)
                 print(" ✅")
-                print(f"   تم التحميل: poster (الحجم: {img_size:.2f}MB)")
+                print(f"   تم التحميل: poster ({img_size:.2f}MB)")
                 
                 # تحويل WebP إلى JPG
                 if image_path.lower().endswith('.webp'):
@@ -175,14 +211,33 @@ async def main():
                         img.save(jpg_path, 'JPEG', quality=95)
                         image_path = jpg_path
                         print(f"   تم تحويل WebP إلى JPG")
-                    except Exception as e:
+                    except:
                         pass
                 
-                # تنزيل الفيديو
                 print("جاري تحميل الفيديو", end='', flush=True)
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(" ✅")
-                print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
+                print(f"   تم التحميل: {Path(video_path).name} ({vid_size:.2f}MB)")
+                
+                # ✅ استخراج معلومات الفيديو
+                print("جاري استخراج معلومات الفيديو...", end='', flush=True)
+                video_info = get_video_info(video_path)
+                print(" ✅")
+                print(f"   الأبعاد: {video_info['width']}x{video_info['height']} | المدة: {video_info['duration']}s")
+                
+                # ✅ استخراج Thumbnail عالي الجودة
+                print("جاري استخراج Thumbnail...", end='', flush=True)
+                video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
+                
+                # نجرب نستخرج من ثانية 1، لو فشل نجرب من ثانية 5
+                if not extract_video_thumbnail(video_path, video_thumb_path, 1):
+                    extract_video_thumbnail(video_path, video_thumb_path, 5)
+                
+                if os.path.exists(video_thumb_path):
+                    print(" ✅")
+                else:
+                    print(" ⚠️ (سيتم استخدام البوستر)")
+                    video_thumb_path = image_path
                 
                 print(f"\n✅ جاهز للرفع")
             
@@ -191,13 +246,13 @@ async def main():
                     import json
                     series = json.loads(os.getenv('SERIES_VIDEOS', '[]'))
                 except Exception as e:
-                    raise Exception(f"خطأ في تنسيق JSON: {str(e)}")
+                    raise Exception(f"خطأ في JSON: {str(e)}")
                 
                 if not isinstance(series, list) or not series:
-                    raise Exception("مطلوب على الأقل ملف فيديو واحد")
+                    raise Exception("مطلوب ملف فيديو واحد على الأقل")
                 
                 if len(series) > 10:
-                    print(f"⚠️  سيتم رفع أول 10 ملفات فقط")
+                    print(f"⚠️ سيتم رفع أول 10 ملفات فقط")
                     series = series[:10]
                 
                 media_files = []
@@ -226,25 +281,42 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع Album (أبعاد طبيعية)...", end='', flush=True)
+                print("جاري رفع الفيديو (نفس Telegram Desktop)...", end='', flush=True)
                 
-                # ✅ الحل النهائي: Album بدون تحديد thumb
-                # Telegram هيسحب الـ thumbnail الداخلي من الفيديو تلقائياً
-                # والأبعاد هتكون طبيعية زي Mowgli 2025
-                
-                await client.send_file(
+                # ✅ رفع الفيديو لوحده الأول مع كل التفاصيل
+                video_msg = await client.send_file(
                     entity,
-                    file=[image_path, video_path],
-                    caption=caption,
+                    video_path,
+                    caption='',  # مفيش كابشن على الفيديو
                     parse_mode='html',
-                    force_document=False,
                     supports_streaming=True,
-                    # ❌ لا thumb هنا - خلي Telegram يستخدم الداخلي
+                    force_document=False,
+                    thumb=video_thumb_path,  # Thumbnail عالي الجودة
+                    attributes=[
+                        DocumentAttributeVideo(
+                            duration=video_info['duration'],
+                            w=video_info['width'],
+                            h=video_info['height'],
+                            supports_streaming=True
+                        )
+                    ]
                 )
-                
                 print(" ✅")
+                
+                print("جاري إضافة البوستر...", end='', flush=True)
+                
+                # ✅ رفع الصورة كـ رد على الفيديو (Album)
+                photo_msg = await client.send_file(
+                    entity,
+                    image_path,
+                    caption=caption,  # الكابشن على الصورة
+                    reply_to=video_msg.id,
+                    parse_mode='html'
+                )
+                print(" ✅")
+                
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: أبعاد طبيعية + thumbnail داخلي")
+                print("🎉 الشكل: فيديو بـ Thumbnail + بوستر (Album)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
@@ -270,7 +342,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⚠️  تم الإلغاء يدوياً", file=sys.stderr)
+        print("\n⚠️ تم الإلغاء يدوياً", file=sys.stderr)
         sys.exit(130)
     except Exception as e:
         print(f"\n{'='*70}", file=sys.stderr)
