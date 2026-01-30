@@ -55,9 +55,10 @@ jobs:
       - name: 🎬 تثبيت FFmpeg (مهم لاستخراج Thumbnail)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg ffprobe
+          sudo apt-get install -y ffmpeg
           ffmpeg -version | head -1
-          echo "✅ FFmpeg تم التثبيت بنجاح"
+          ffprobe -version | head -1
+          echo "✅ FFmpeg و FFprobe تم التثبيت بنجاح"
       
       - name: 📦 تثبيت المكتبات
         run: |
