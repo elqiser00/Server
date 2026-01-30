@@ -11,8 +11,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
-from telethon.tl.functions.messages import EditMessageRequest
+from telethon.tl.types import (
+    DocumentAttributeVideo,
+    InputMediaUploadedPhoto,
+    InputMediaUploadedDocument,
+    InputSingleMedia
+)
+from telethon.tl.functions.messages import SendMultiMediaRequest
+from telethon.utils import get_input_peer
 import requests
 import ssl
 import urllib3
@@ -86,7 +92,6 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             raise Exception(f"فشل التنزيل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو"""
     try:
         cmd = [
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
@@ -110,12 +115,11 @@ def get_video_info(video_path):
                 'duration': int(float(duration)) if duration else 0
             }
     except Exception as e:
-        print(f"⚠️ فشل استخراج معلومات الفيديو: {e}")
+        pass
     
     return {'width': 1280, 'height': 720, 'duration': 0}
 
 def extract_video_thumbnail(video_path, output_path, time_sec=1):
-    """استخراج Thumbnail من الفيديو"""
     try:
         cmd = [
             'ffmpeg', '-y', '-i', video_path,
@@ -157,7 +161,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album جنب بعض")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - Album حقيقي")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -216,12 +220,10 @@ async def main():
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(" ✅")
                 
-                # استخراج معلومات الفيديو
                 print("جاري استخراج معلومات الفيديو...", end='', flush=True)
                 video_info = get_video_info(video_path)
                 print(" ✅")
                 
-                # استخراج Thumbnail
                 print("جاري استخراج Thumbnail...", end='', flush=True)
                 video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
                 
@@ -274,22 +276,26 @@ async def main():
             
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
+            input_peer = get_input_peer(entity)
             
             if mode == 'movie':
                 print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
                 
-                # ✅ الحل النهائي: رفع الفيديو والصورة كـ Album
-                # بس الفيديو بدون كابشن، والصورة بالكابشن
+                # ✅ رفع الملفات
+                uploaded_photo = await client.upload_file(image_path)
+                uploaded_video = await client.upload_file(video_path)
                 
-                # نرفع الفيديو لوحده الأول (بدون كابشن)
-                video_msg = await client.send_file(
-                    entity,
-                    video_path,
-                    caption='',  # ❌ مفيش كابشن على الفيديو
-                    parse_mode='html',
-                    supports_streaming=True,
-                    force_document=False,
-                    thumb=video_thumb_path,
+                # ✅ قراءة Thumbnail كـ bytes
+                with open(video_thumb_path, 'rb') as f:
+                    thumb_bytes = f.read()
+                
+                # ✅ إنشاء InputMedia للصورة
+                photo_media = InputMediaUploadedPhoto(uploaded_photo)
+                
+                # ✅ إنشاء InputMedia للفيديو مع كل التفاصيل
+                video_media = InputMediaUploadedDocument(
+                    file=uploaded_video,
+                    mime_type='video/mp4',
                     attributes=[
                         DocumentAttributeVideo(
                             duration=video_info['duration'],
@@ -297,23 +303,34 @@ async def main():
                             h=video_info['height'],
                             supports_streaming=True
                         )
-                    ]
+                    ],
+                    thumb=thumb_bytes,
+                    force_file=False
                 )
                 
-                # ✅ نحذف الكابشن من الفيديو (لو فيه) ونضيف الصورة كـ Album
-                # نستخدم send_file مع reply_to عشان يبقوا Album
+                # ✅ إنشاء قائمة Album
+                media_list = [
+                    InputSingleMedia(
+                        media=photo_media,
+                        message=caption,  # الكابشن على الصورة
+                        entities=[]
+                    ),
+                    InputSingleMedia(
+                        media=video_media,
+                        message='',  # مفيش كابشن على الفيديو
+                        entities=[]
+                    )
+                ]
                 
-                photo_msg = await client.send_file(
-                    entity,
-                    image_path,
-                    caption=caption,  # ✅ الكابشن على الصورة
-                    reply_to=video_msg.id,  # Album
-                    parse_mode='html'
-                )
+                # ✅ إرسال Album
+                await client(SendMultiMediaRequest(
+                    peer=input_peer,
+                    multi_media=media_list
+                ))
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album)")
+                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album حقيقي)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
