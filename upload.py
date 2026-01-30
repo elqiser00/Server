@@ -10,8 +10,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.functions.messages import EditMessageRequest
-from telethon.tl.types import InputMediaPhotoExternal, InputMediaUploadedPhoto
 import requests
 import ssl
 import urllib3
@@ -145,9 +143,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار الفيديو الحقيقي")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album الحقيقي")
     print("="*70)
-    print("✅ فيديو قابل للتشغيل | ✅ Album صحيح")
+    print("✅ صورة + فيديو جنب بعض | ✅ فيديو قابل للتشغيل")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -217,7 +215,7 @@ async def main():
                 if extract_video_thumbnail(video_path, video_thumb_path):
                     print(" ✅")
                 else:
-                    print(" ⚠️ (سيتم استخدام البوستر)")
+                    print(" ⚠️")
                     video_thumb_path = image_path
                 
                 print(f"\n✅ جاهز للرفع")
@@ -262,34 +260,34 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع الفيديو كـ فيديو حقيقي...", end='', flush=True)
+                print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
                 
-                # ✅ الحل: رفع الفيديو لوحده الأول (كـ فيديو حقيقي)
-                video_msg = await client.send_file(
+                # ✅ الحل النهائي: استخدام album=True
+                # رفع الصورة والفيديو كـ Album حقيقي
+                
+                # الطريقة: نرفعهم كـ قائمة مع album=True
+                # الصورة تكون صورة عادية (InputMediaPhoto)
+                # الفيديو يكون فيديو (InputMediaDocument) مع supports_streaming
+                
+                from telethon.tl.types import InputMediaPhotoExternal, InputMediaDocumentExternal
+                
+                # رفع الصورة والفيديو كـ Album
+                # نستخدم send_file مع album=True显式
+                
+                await client.send_file(
                     entity,
-                    video_path,
+                    file=[image_path, video_path],
                     caption=caption,
                     parse_mode='html',
-                    supports_streaming=True,     # ✅ فيديو قابل للتشغيل
-                    force_document=False,        # ✅ مش ملف
-                    thumb=video_thumb_path,      # ✅ Thumbnail من FFmpeg
-                    silent=True
+                    album=True,                  # ✅ Album حقيقي (جنب بعض)
+                    force_document=False,        # فيديو كـ فيديو
+                    supports_streaming=True,     # قابل للتشغيل
+                    thumb=video_thumb_path       # Thumbnail للفيديو
                 )
+                
                 print(" ✅")
-                
-                # بعدين نرفع الصورة كـ رد (Album)
-                print("جاري إضافة البوستر للألبوم...", end='', flush=True)
-                
-                photo_msg = await client.send_file(
-                    entity,
-                    image_path,
-                    reply_to=video_msg.id,  # رد على الفيديو = Album
-                    silent=True
-                )
-                print(" ✅")
-                
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: فيديو قابل للتشغيل + بوستر (Album)")
+                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
