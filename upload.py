@@ -5,6 +5,7 @@ import asyncio
 import tempfile
 import mimetypes
 import time
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
@@ -91,6 +92,32 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 Path(filepath).unlink(missing_ok=True)
             raise Exception(f"فشل التنزيل: {str(e)}")
 
+def extract_video_thumbnail(video_path, output_path):
+    """استخراج Thumbnail من الفيديو باستخدام FFmpeg"""
+    try:
+        # استخراج frame من منتصف الفيديو
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-ss', '00:00:01',  # ثانية واحدة من البداية
+            '-vframes', '1',     # frame واحد
+            '-q:v', '2',         # جودة عالية
+            '-y',                # overwrite
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0 and os.path.exists(output_path):
+            return True
+        else:
+            print(f"⚠️ FFmpeg warning: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"⚠️ فشل استخراج Thumbnail: {e}")
+        return False
+
 async def resolve_channel(client, channel_input):
     """معالجة ذكية لجميع أنواع روابط القنوات"""
     channel_input = channel_input.strip()
@@ -119,9 +146,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - بـ FFmpeg")
     print("="*70)
-    print("✅ صورة على اليسار | ✅ فيديو على اليمين")
+    print("✅ استخراج Thumbnail تلقائياً | ✅ Album احترافي")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -184,7 +211,19 @@ async def main():
                 print(" ✅")
                 print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
                 
-                print(f"\n✅ جاهز للرفع: Album (بوستر + فيديو)")
+                # ✅ استخراج Thumbnail من الفيديو باستخدام FFmpeg
+                print("جاري استخراج Thumbnail من الفيديو...", end='', flush=True)
+                video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
+                
+                if extract_video_thumbnail(video_path, video_thumb_path):
+                    print(" ✅")
+                    print(f"   تم استخراج Thumbnail من الفيديو")
+                else:
+                    print(" ⚠️")
+                    print(f"   سيتم استخدام البوستر كـ Thumbnail")
+                    video_thumb_path = image_path  # fallback للبوستر
+                
+                print(f"\n✅ جاهز للرفع: Album (بوستر + فيديو مع Thumbnail)")
             
             else:  # series
                 try:
@@ -227,25 +266,23 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع Album (بوستر على اليسار + فيديو على اليمين)...", end='', flush=True)
+                print("جاري رفع Album (بوستر + فيديو)...", end='', flush=True)
                 
-                # ✅ الحل: استخدام send_file مع مسارات الملفات مباشرة
-                # Telethon هيرفعهم كـ Album تلقائياً
-                
-                # رفع الصورة والفيديو كـ Album
-                # الصورة أولاً = على اليسار، الفيديو ثانياً = على اليمين
+                # ✅ رفع Album: صورة على اليسار، فيديو على اليمين مع Thumbnail من FFmpeg
                 await client.send_file(
                     entity,
-                    file=[image_path, video_path],  # قائمة = Album
+                    file=[image_path, video_path],
                     caption=caption,
                     parse_mode='html',
-                    force_document=False,  # فيديو كـ فيديو مش ملف
+                    force_document=False,
+                    # ✅ استخدام Thumbnail المستخرج من الفيديو
+                    thumb=video_thumb_path if video_thumb_path != image_path else None,
                     clear_draft=False
                 )
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين")
+                print("🎉 الشكل: بوستر على اليسار + فيديو على اليمين (بـ Thumbnail أصلي)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
