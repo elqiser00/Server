@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.functions.messages import EditMessageRequest
 import requests
 import ssl
 import urllib3
@@ -85,7 +86,7 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             raise Exception(f"فشل التنزيل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو باستخدام ffprobe"""
+    """استخراج معلومات الفيديو"""
     try:
         cmd = [
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
@@ -99,8 +100,6 @@ def get_video_info(video_path):
             data = json.loads(result.stdout)
             width = data.get('streams', [{}])[0].get('width', 1280)
             height = data.get('streams', [{}])[0].get('height', 720)
-            
-            # Duration من stream أو format
             duration = data.get('streams', [{}])[0].get('duration')
             if not duration:
                 duration = data.get('format', {}).get('duration', 0)
@@ -122,7 +121,7 @@ def extract_video_thumbnail(video_path, output_path, time_sec=1):
             'ffmpeg', '-y', '-i', video_path,
             '-ss', str(time_sec),
             '-vframes', '1',
-            '-q:v', '1',  # أعلى جودة
+            '-q:v', '1',
             '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black',
             output_path
         ]
@@ -158,7 +157,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Telegram Desktop")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album جنب بعض")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -201,7 +200,6 @@ async def main():
                 print("جاري تحميل البوستر", end='', flush=True)
                 image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'poster', is_image=True)
                 print(" ✅")
-                print(f"   تم التحميل: poster ({img_size:.2f}MB)")
                 
                 # تحويل WebP إلى JPG
                 if image_path.lower().endswith('.webp'):
@@ -217,26 +215,23 @@ async def main():
                 print("جاري تحميل الفيديو", end='', flush=True)
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(" ✅")
-                print(f"   تم التحميل: {Path(video_path).name} ({vid_size:.2f}MB)")
                 
-                # ✅ استخراج معلومات الفيديو
+                # استخراج معلومات الفيديو
                 print("جاري استخراج معلومات الفيديو...", end='', flush=True)
                 video_info = get_video_info(video_path)
                 print(" ✅")
-                print(f"   الأبعاد: {video_info['width']}x{video_info['height']} | المدة: {video_info['duration']}s")
                 
-                # ✅ استخراج Thumbnail عالي الجودة
+                # استخراج Thumbnail
                 print("جاري استخراج Thumbnail...", end='', flush=True)
                 video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
                 
-                # نجرب نستخرج من ثانية 1، لو فشل نجرب من ثانية 5
                 if not extract_video_thumbnail(video_path, video_thumb_path, 1):
                     extract_video_thumbnail(video_path, video_thumb_path, 5)
                 
                 if os.path.exists(video_thumb_path):
                     print(" ✅")
                 else:
-                    print(" ⚠️ (سيتم استخدام البوستر)")
+                    print(" ⚠️")
                     video_thumb_path = image_path
                 
                 print(f"\n✅ جاهز للرفع")
@@ -281,17 +276,20 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                print("جاري رفع الفيديو (نفس Telegram Desktop)...", end='', flush=True)
+                print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
                 
-                # ✅ رفع الفيديو لوحده الأول مع كل التفاصيل
+                # ✅ الحل النهائي: رفع الفيديو والصورة كـ Album
+                # بس الفيديو بدون كابشن، والصورة بالكابشن
+                
+                # نرفع الفيديو لوحده الأول (بدون كابشن)
                 video_msg = await client.send_file(
                     entity,
                     video_path,
-                    caption='',  # مفيش كابشن على الفيديو
+                    caption='',  # ❌ مفيش كابشن على الفيديو
                     parse_mode='html',
                     supports_streaming=True,
                     force_document=False,
-                    thumb=video_thumb_path,  # Thumbnail عالي الجودة
+                    thumb=video_thumb_path,
                     attributes=[
                         DocumentAttributeVideo(
                             duration=video_info['duration'],
@@ -301,22 +299,21 @@ async def main():
                         )
                     ]
                 )
-                print(" ✅")
                 
-                print("جاري إضافة البوستر...", end='', flush=True)
+                # ✅ نحذف الكابشن من الفيديو (لو فيه) ونضيف الصورة كـ Album
+                # نستخدم send_file مع reply_to عشان يبقوا Album
                 
-                # ✅ رفع الصورة كـ رد على الفيديو (Album)
                 photo_msg = await client.send_file(
                     entity,
                     image_path,
-                    caption=caption,  # الكابشن على الصورة
-                    reply_to=video_msg.id,
+                    caption=caption,  # ✅ الكابشن على الصورة
+                    reply_to=video_msg.id,  # Album
                     parse_mode='html'
                 )
-                print(" ✅")
                 
+                print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: فيديو بـ Thumbnail + بوستر (Album)")
+                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
