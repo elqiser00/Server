@@ -1,10 +1,10 @@
-name: 📤 رفع محتوى على تيليجرام - الإصدار النهائي
+name: 📤 رفع محتوى على تيليجرام - إصدار محسن
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'الوضع (اختر: movie للأفلام / series للمسلسلات)'
+        description: 'نوع المحتوى'
         required: true
         default: 'movie'
         type: choice
@@ -13,35 +13,42 @@ on:
           - series
       
       channel:
-        description: 'رابط القناة: @yourchannel أو رابط دعوة (مثل +Abc123)'
+        description: 'معرف القناة (@channelname أو -100xxx أو رابط)'
         required: true
         type: string
       
       caption:
-        description: 'الكابشن/الوصف (استخدم \\n للفصل بين الأسطر)'
+        description: 'الوصف/الكابشن (استخدم \n لسطر جديد)'
         required: true
         type: string
       
+      # حقول خاصة بالأفلام
       image_url:
-        description: 'رابط مباشر للصورة (لوضع الأفلام فقط)'
+        description: 'رابط صورة البوستر (للأفلام فقط)'
         required: false
         type: string
       
       video_url:
-        description: 'رابط مباشر للفيديو (لوضع الأفلام فقط)'
+        description: 'رابط الفيديو (للأفلام فقط)'
         required: false
         type: string
       
       video_name:
-        description: 'اسم الفيديو (بدون .mp4)'
+        description: 'اسم الفيلم (بدون امتداد)'
         required: false
         default: 'movie'
+        type: string
+      
+      # حقل خاص بالمسلسلات (JSON)
+      series_data:
+        description: 'بيانات المسلسل (JSON) - للمسلسلات فقط. مثال: [{"url":"رابط1","name":"ح1"},{"url":"رابط2","name":"ح2"}]'
+        required: false
         type: string
 
 jobs:
   upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120  # زيادة الوقت للملفات الكبيرة
     
     steps:
       - name: 🛠️ إعداد البيئة
@@ -52,30 +59,30 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: 🎬 تثبيت FFmpeg (مهم لاستخراج Thumbnail)
+      - name: 🎬 تثبيت FFmpeg
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
+          echo "✅ FFmpeg جاهز"
           ffmpeg -version | head -1
-          ffprobe -version | head -1
-          echo "✅ FFmpeg و FFprobe تم التثبيت بنجاح"
       
       - name: 📦 تثبيت المكتبات
         run: |
           pip install --upgrade pip
-          pip install telethon requests urllib3 pillow
+          pip install telethon requests pillow
       
       - name: 🔒 التحقق من الأسرار
         env:
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+          API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          SESSION: ${{ secrets.TELEGRAM_SESSION_STRING }}
         run: |
-          if [ -z "$TELEGRAM_API_ID" ] || [ -z "$TELEGRAM_API_HASH" ] || [ -z "$TELEGRAM_SESSION_STRING" ]; then
-            echo "❌ المتغيرات السرية غير مكتملة"
+          if [ -z "$API_ID" ] || [ -z "$API_HASH" ] || [ -z "$SESSION" ]; then
+            echo "❌ خطأ: المتغيرات السرية مفقودة!"
+            echo "المطلوب: TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING"
             exit 1
           fi
-          echo "✅ تم التحقق من الأسرار"
+          echo "✅ جميع الأسرار موجودة"
       
       - name: 🚀 تشغيل السكريبت
         env:
@@ -85,15 +92,19 @@ jobs:
           IMAGE_URL: ${{ github.event.inputs.image_url }}
           VIDEO_URL: ${{ github.event.inputs.video_url }}
           VIDEO_NAME: ${{ github.event.inputs.video_name }}
+          SERIES_DATA: ${{ github.event.inputs.series_data }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
         run: |
-          python upload.py || exit 1
+          python upload.py
       
-      - name: ✅ نجاح
+      - name: ✅ نجاح العملية
         if: success()
         run: |
-          echo "=========================================="
           echo "🎉 تم الرفع بنجاح!"
-          echo "=========================================="
+      
+      - name: ❌ فشل العملية
+        if: failure()
+        run: |
+          echo "💥 فشل الرفع، راجع الأخطاء أعلاه"
