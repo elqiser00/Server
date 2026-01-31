@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+
+# سأقوم بإنشاء ملف السكربت المحسن
+script_content = '''#!/usr/bin/env python3
 import os
 import sys
 import asyncio
@@ -11,7 +13,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.types import (
+    DocumentAttributeVideo,
+    InputMediaUploadedPhoto,
+    InputMediaUploadedDocument,
+    InputSingleMedia,
+    InputFile
+)
+from telethon.tl.functions.messages import SendMultiMediaRequest
+from telethon.utils import get_input_peer
 import requests
 import ssl
 import urllib3
@@ -24,17 +34,8 @@ MAX_VIDEO_SIZE_MB = 1999.0
 def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
-def print_progress(current, total, prefix=''):
-    """طباعة شريط التقدم"""
-    percent = 100 * (current / total) if total > 0 else 0
-    filled_len = int(50 * current // total) if total > 0 else 50
-    bar = '█' * filled_len + '-' * (50 - filled_len)
-    print(f'\r{prefix} |{bar}| {percent:.1f}%', end='', flush=True)
-    if current == total:
-        print()
-
-async def download_file_with_progress(url, save_path, headers=None, prefix=''):
-    """تحميل الملف مع مؤشر تقدم"""
+async def download_file(url, save_path, headers=None):
+    """تحميل ملف مع إعادة محاولة"""
     try:
         verify_ssl = True
         if not headers:
@@ -43,7 +44,6 @@ async def download_file_with_progress(url, save_path, headers=None, prefix=''):
                 'Accept': '*/*'
             }
         
-        # محاولة التحميل مع SSL أولاً، ثم بدونه إذا فشل
         for attempt in range(2):
             try:
                 response = requests.get(
@@ -57,124 +57,87 @@ async def download_file_with_progress(url, save_path, headers=None, prefix=''):
             except (requests.exceptions.SSLError, ssl.SSLError):
                 if attempt == 0:
                     verify_ssl = False
-                    print(f"\n⚠️ خطأ SSL، إعادة المحاولة بدون تحقق...")
                     continue
                 raise
-        
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
         
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        print_progress(downloaded, total_size, prefix)
         
-        return downloaded / 1024 / 1024  # حجم بالميجا
+        return os.path.getsize(save_path) / 1024 / 1024
     except Exception as e:
         if os.path.exists(save_path):
             os.remove(save_path)
         raise Exception(f"فشل التحميل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو باستخدام ffprobe"""
+    """استخراج معلومات الفيديو"""
     try:
         cmd = [
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height,duration,codec_name',
-            '-show_entries', 'format=duration,size',
+            '-show_entries', 'stream=width,height,duration',
+            '-show_entries', 'format=duration',
             '-of', 'json', video_path
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            stream = data.get('streams', [{}])[0]
-            format_info = data.get('format', {})
+            width = data.get('streams', [{}])[0].get('width', 1280)
+            height = data.get('streams', [{}])[0].get('height', 720)
+            duration = data.get('streams', [{}])[0].get('duration')
+            if not duration:
+                duration = data.get('format', {}).get('duration', 0)
             
             return {
-                'width': stream.get('width', 1280),
-                'height': stream.get('height', 720),
-                'duration': int(float(stream.get('duration') or format_info.get('duration', 0))),
-                'size_mb': int(format_info.get('size', 0)) / 1024 / 1024
+                'width': width,
+                'height': height,
+                'duration': int(float(duration)) if duration else 0
             }
     except Exception as e:
         print(f"⚠️ تعذر استخراج معلومات الفيديو: {e}")
     
-    return {'width': 1280, 'height': 720, 'duration': 0, 'size_mb': 0}
+    return {'width': 1280, 'height': 720, 'duration': 0}
 
-def extract_thumbnail(video_path, output_path, time_sec=1):
-    """استخراج صورة مصغرة من الفيديو"""
+def prepare_thumbnail(image_path, output_path, max_size=320):
+    """تحضير Thumbnail مناسب للفيديو (يجب أن يكون مربع تقريباً)"""
     try:
-        # التأكد من عدم تجاوز مدة الفيديو
-        info = get_video_info(video_path)
-        if info['duration'] > 0 and time_sec >= info['duration']:
-            time_sec = max(1, info['duration'] // 2)
+        img = Image.open(image_path)
         
-        cmd = [
-            'ffmpeg', '-y', '-ss', str(time_sec), '-i', video_path,
-            '-vframes', '1', '-q:v', '2',
-            '-vf', 'scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2:black',
-            output_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+        # تحويل لـ RGB لو لازم
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        # تغيير الحجم للـ thumbnail المربع (Telegram يفضل مربع للفيديو)
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+        # حفظ كـ JPG
+        img.save(output_path, 'JPEG', quality=95)
+        return True
     except Exception as e:
-        print(f"⚠️ فشل استخراج Thumbnail: {e}")
+        print(f"⚠️ فشل تحضير Thumbnail: {e}")
         return False
-
-async def upload_with_progress(client, entity, file_path, caption='', thumb=None, is_video=False, video_info=None):
-    """رفع الملف مع مؤشر تقدم"""
-    def progress_callback(current, total):
-        print_progress(current, total, '📤 الرفع')
-    
-    try:
-        if is_video and video_info:
-            attributes = [DocumentAttributeVideo(
-                duration=video_info['duration'],
-                w=video_info['width'],
-                h=video_info['height'],
-                supports_streaming=True
-            )]
-            
-            return await client.send_file(
-                entity,
-                file_path,
-                caption=caption,
-                attributes=attributes,
-                thumb=thumb,
-                supports_streaming=True,
-                progress_callback=progress_callback
-            )
-        else:
-            return await client.send_file(
-                entity,
-                file_path,
-                caption=caption,
-                progress_callback=progress_callback
-            )
-    except Exception as e:
-        raise Exception(f"فشل الرفع: {str(e)}")
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - الإصدار المحسن")
+    print("🚀 سكريبت رفع الأفلام مع Album (صورة + فيديو + Thumbnail)")
     print("="*70)
     
-    # التحقق من المتغيرات المطلوبة
-    required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
+    # التحقق من المتغيرات
+    required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
     missing = [var for var in required if not os.getenv(var, '').strip()]
     if missing:
-        raise Exception(f"المتغيرات التالية مفقودة: {', '.join(missing)}")
+        raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
     
-    mode = os.getenv('MODE', '').strip().lower()
     channel = os.getenv('CHANNEL', '').strip()
-    caption = os.getenv('CAPTION', '').replace('\\n', '\n').strip()
+    caption = os.getenv('CAPTION', '').replace('\\\\n', '\\n').strip()
+    img_url = os.getenv('IMAGE_URL', '').strip()
+    vid_url = os.getenv('VIDEO_URL', '').strip()
+    vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
     
-    if mode not in ['movie', 'series']:
-        raise Exception("الوضع يجب أن يكون 'movie' أو 'series' فقط!")
+    if not img_url or not vid_url:
+        raise Exception("مطلوب IMAGE_URL و VIDEO_URL")
     
     # إعداد العميل
     client = TelegramClient(
@@ -186,9 +149,9 @@ async def main():
     
     await client.start()
     me = await client.get_me()
-    print(f"✅ تم تسجيل الدخول كـ: {me.first_name} (@{me.username})")
+    print(f"✅ تم تسجيل الدخول: {me.first_name}")
     
-    # الحصول على الكيان (القناة)
+    # الحصول على الكيان
     try:
         if channel.startswith('@'):
             entity = await client.get_entity(channel)
@@ -202,211 +165,141 @@ async def main():
     
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
-            if mode == 'movie':
-                await handle_movie_mode(client, entity, caption, tmp_dir)
-            else:
-                await handle_series_mode(client, entity, caption, tmp_dir)
-                
+            print("\\n🎬 جاري تحميل الملفات...")
+            
+            # 1. تحميل البوستر
+            print("📥 تحميل البوستر...")
+            img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
+            if not img_ext or len(img_ext) > 5:
+                img_ext = '.jpg'
+            img_path = os.path.join(tmp_dir, f"poster{img_ext}")
+            
+            await download_file(img_url, img_path)
+            
+            # تحويل WebP لـ JPG لو لازم
+            if img_path.lower().endswith('.webp'):
+                try:
+                    jpg_path = img_path.replace('.webp', '.jpg')
+                    img = Image.open(img_path).convert('RGB')
+                    img.save(jpg_path, 'JPEG', quality=95)
+                    img_path = jpg_path
+                    print("🔄 تم تحويل WebP إلى JPG")
+                except:
+                    pass
+            
+            # 2. تحميل الفيديو
+            print(f"📥 تحميل الفيديو ({vid_name})...")
+            vid_name_clean = sanitize_filename(vid_name)
+            vid_path = os.path.join(tmp_dir, f"{vid_name_clean}.mp4")
+            
+            vid_size = await download_file(vid_url, vid_path)
+            print(f"📦 حجم الفيديو: {vid_size:.2f} MB")
+            
+            if vid_size > MAX_VIDEO_SIZE_MB:
+                raise Exception(f"حجم الفيديو كبير جداً ({vid_size:.1f}MB)")
+            
+            # 3. استخراج معلومات الفيديو
+            print("🔍 استخراج معلومات الفيديو...")
+            video_info = get_video_info(vid_path)
+            print(f"   📐 الدقة: {video_info['width']}x{video_info['height']}")
+            print(f"   ⏱️ المدة: {video_info['duration']} ثانية")
+            
+            # 4. تحضير Thumbnail للفيديو (من البوستر)
+            print("🖼️ تحضير Thumbnail للفيديو من البوستر...")
+            thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
+            
+            if not prepare_thumbnail(img_path, thumb_path):
+                # لو فشل، نحاول نعمل resize بسيط
+                try:
+                    img = Image.open(img_path).convert('RGB')
+                    img = img.resize((320, 320), Image.Resampling.LANCZOS)
+                    img.save(thumb_path, 'JPEG', quality=90)
+                except Exception as e2:
+                    print(f"⚠️ فشل إنشاء Thumbnail: {e2}")
+                    thumb_path = None
+            
+            # 5. رفع Album (الطريقة الصحيحة)
+            print("\\n📤 جاري إنشاء Album (صورة + فيديو)...")
+            
+            # رفع الملفات أولاً
+            print("⏳ رفع البوستر...")
+            uploaded_photo = await client.upload_file(img_path)
+            
+            print("⏳ رفع الفيديو...")
+            uploaded_video = await client.upload_file(vid_path)
+            
+            # رفع Thumbnail (مطلوب ليكون InputFile)
+            uploaded_thumb = None
+            if thumb_path and os.path.exists(thumb_path):
+                print("⏳ رفع Thumbnail...")
+                uploaded_thumb = await client.upload_file(thumb_path)
+            
+            # إنشاء InputMedia للصورة (Photo)
+            photo_media = InputMediaUploadedPhoto(uploaded_photo)
+            
+            # إنشاء InputMedia للفيديو مع Thumbnail
+            video_attributes = DocumentAttributeVideo(
+                duration=video_info['duration'],
+                w=video_info['width'],
+                h=video_info['height'],
+                supports_streaming=True
+            )
+            
+            video_media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[video_attributes],
+                thumb=uploaded_thumb,  # ✅ هنا نضع البوستر كـ Thumbnail للفيديو
+                force_file=False
+            )
+            
+            # إنشاء قائمة الـ Album
+            media_list = [
+                InputSingleMedia(
+                    media=photo_media,
+                    message=caption,  # الكابشن على الصورة
+                    entities=[]
+                ),
+                InputSingleMedia(
+                    media=video_media,
+                    message='',  # الفيديو بدون كابشن (الكابشن على الصورة كفاية)
+                    entities=[]
+                )
+            ]
+            
+            # إرسال Album
+            print("📤 إرسال Album...")
+            input_peer = get_input_peer(entity)
+            
+            await client(SendMultiMediaRequest(
+                peer=input_peer,
+                multi_media=media_list
+            ))
+            
+            print("\\n" + "="*70)
+            print("✅ تم الرفع بنجاح!")
+            print("🎉 الشكل النهائي:")
+            print("   📸 صورة البوستر (ظاهرة كصورة عالية الجودة)")
+            print("   🎬 الفيديو (مع البوستر كـ Thumbnail/غلاف)")
+            print("="*70)
+            
         finally:
             await client.disconnect()
-            print("\n" + "="*70)
-            print("✅ تم إنهاء الجلسة")
-            print("="*70)
-
-async def handle_movie_mode(client, entity, caption, tmp_dir):
-    """معالجة وضع الأفلام"""
-    img_url = os.getenv('IMAGE_URL', '').strip()
-    vid_url = os.getenv('VIDEO_URL', '').strip()
-    vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
-    
-    if not img_url or not vid_url:
-        raise Exception("وضع الفيلم يتطلب IMAGE_URL و VIDEO_URL")
-    
-    print("\n🎬 جاري تحضير الفيلم...")
-    
-    # تحميل البوستر
-    print("\n📥 تحميل البوستر...")
-    img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
-    if not img_ext or len(img_ext) > 5:
-        img_ext = '.jpg'
-    img_path = os.path.join(tmp_dir, f"poster{img_ext}")
-    
-    await download_file_with_progress(img_url, img_path, prefix='📥 البوستر')
-    
-    # تحويل WebP إلى JPG إذا لزم الأمر
-    if img_path.endswith('.webp'):
-        try:
-            jpg_path = img_path.replace('.webp', '.jpg')
-            img = Image.open(img_path).convert('RGB')
-            img.save(jpg_path, 'JPEG', quality=95)
-            img_path = jpg_path
-            print("🔄 تم تحويل WebP إلى JPG")
-        except Exception as e:
-            print(f"⚠️ فشل تحويل الصورة: {e}")
-    
-    # تحميل الفيديو
-    print(f"\n📥 تحميل الفيديو ({vid_name})...")
-    vid_name_clean = sanitize_filename(vid_name)
-    vid_path = os.path.join(tmp_dir, f"{vid_name_clean}.mp4")
-    
-    vid_size = await download_file_with_progress(vid_url, vid_path, prefix='📥 الفيديو')
-    print(f"✅ حجم الفيديو: {vid_size:.2f} MB")
-    
-    if vid_size > MAX_VIDEO_SIZE_MB:
-        raise Exception(f"حجم الفيديو ({vid_size:.1f}MB) يتجاوز الحد المسموح ({MAX_VIDEO_SIZE_MB}MB)")
-    
-    # استخراج معلومات الفيديو
-    print("\n🔍 استخراج معلومات الفيديو...")
-    video_info = get_video_info(vid_path)
-    print(f"   الدقة: {video_info['width']}x{video_info['height']}")
-    print(f"   المدة: {video_info['duration']} ثانية")
-    
-    # استخراج Thumbnail
-    print("\n🖼️ استخراج Thumbnail...")
-    thumb_path = os.path.join(tmp_dir, "thumb.jpg")
-    if not extract_thumbnail(vid_path, thumb_path):
-        thumb_path = img_path  # استخدام البوستر كـ thumbnail احتياطي
-        print("⚠️ تم استخدام البوستر كـ Thumbnail")
-    else:
-        print("✅ تم استخراج Thumbnail من الفيديو")
-    
-    # رفع Album (صورة + فيديو معاً)
-    print("\n📤 جاري رفع Album (الصورة + الفيديو)...")
-    print("⏳ قد يستغرق الرفع بعض الوقت حسب حجم الملف...\n")
-    
-    try:
-        # طريقة أفضل لرفع Album باستخدام send_file مع قائمة
-        album_files = [img_path, vid_path]
-        
-        # إعداد attributes للفيديو فقط
-        vid_attributes = [DocumentAttributeVideo(
-            duration=video_info['duration'],
-            w=video_info['width'],
-            h=video_info['height'],
-            supports_streaming=True
-        )]
-        
-        # رفع الـ Album
-        # نستخدم force_document=False للفيديو ليعرض بشكل فيديو وليس ملف
-        await client.send_file(
-            entity,
-            album_files,
-            caption=[caption, ''],  # Caption للصورة فقط، الفيديو بدون caption
-            force_document=False,
-            supports_streaming=True,
-            video_attributes=vid_attributes,  # خاصية جديدة في Telethon
-            thumb=thumb_path
-        )
-        
-        print("\n✅ تم رفع Album بنجاح!")
-        print("🎉 الشكل: صورة + فيديو في رسالة واحدة (مجموعة)")
-        
-    except Exception as e:
-        print(f"\n⚠️ فشل رفع Album، جاري المحاولة بالطريقة التقليدية...")
-        # طريقة احتياطية: رفع منفصل
-        print("📤 رفع البوستر...")
-        await client.send_file(entity, img_path, caption=caption)
-        print("📤 رفع الفيديو...")
-        await upload_with_progress(client, entity, vid_path, caption='', 
-                                 is_video=True, video_info=video_info, thumb=thumb_path)
-        print("✅ تم الرفع منفصلاً")
-
-async def handle_series_mode(client, entity, caption, tmp_dir):
-    """معالجة وضع المسلسلات"""
-    series_json = os.getenv('SERIES_DATA', '[]').strip()
-    
-    if not series_json:
-        raise Exception("وضع المسلسلات يتطلب SERIES_DATA (JSON)")
-    
-    try:
-        episodes = json.loads(series_json)
-        if not isinstance(episodes, list):
-            raise Exception("SERIES_DATA يجب أن يكون قائمة (Array)")
-    except json.JSONDecodeError as e:
-        raise Exception(f"خطأ في تنسيق JSON: {e}")
-    
-    if not episodes:
-        raise Exception("القائمة فارغة، لا يوجد حلقات للرفع")
-    
-    if len(episodes) > 10:
-        print(f"⚠️ الحد الأقصى 10 حلقات، سيتم تجاهل {len(episodes) - 10}")
-        episodes = episodes[:10]
-    
-    print(f"\n📺 عدد الحلقات: {len(episodes)}")
-    
-    # تحميل جميع الحلقات
-    video_files = []
-    video_infos = []
-    
-    for i, ep in enumerate(episodes, 1):
-        if not isinstance(ep, dict) or 'url' not in ep:
-            print(f"⚠️ تخطي الحلقة {i}: بيانات غير صالحة")
-            continue
-        
-        url = ep['url'].strip()
-        name = sanitize_filename(ep.get('name', f'الحلقة_{i}'))
-        
-        if not url:
-            continue
-        
-        print(f"\n📥 [{i}/{len(episodes)}] تحميل {name}...")
-        vid_path = os.path.join(tmp_dir, f"{name}.mp4")
-        
-        try:
-            await download_file_with_progress(url, vid_path, prefix=f'📥 {name}')
-            
-            # التحقق من الحجم
-            size_mb = os.path.getsize(vid_path) / 1024 / 1024
-            if size_mb > MAX_VIDEO_SIZE_MB:
-                print(f"⚠️ {name} كبير جداً ({size_mb:.1f}MB)، سيتم تخطيه")
-                os.remove(vid_path)
-                continue
-            
-            # استخراج المعلومات
-            info = get_video_info(vid_path)
-            video_files.append(vid_path)
-            video_infos.append(info)
-            
-        except Exception as e:
-            print(f"❌ فشل تحميل {name}: {e}")
-            continue
-    
-    if not video_files:
-        raise Exception("لم يتم تحميل أي حلقة بنجاح")
-    
-    print(f"\n📤 جاري رفع {len(video_files)} حلقة...")
-    
-    # رفع كـ Album إذا كان العدد <= 10
-    if len(video_files) > 1:
-        print("📦 سيتم رفع الحلقات كـ Album...")
-        try:
-            await client.send_file(
-                entity,
-                video_files,
-                caption=caption,
-                supports_streaming=True,
-                force_document=False
-            )
-            print("✅ تم رفع Album الحلقات بنجاح!")
-        except Exception as e:
-            print(f"⚠️ فشل Album، جاري الرفع المنفصل...")
-            for i, (vid_path, info) in enumerate(zip(video_files, video_infos), 1):
-                print(f"\n📤 رفع الحلقة {i}/{len(video_files)}...")
-                await upload_with_progress(client, entity, vid_path, 
-                                         caption=f"{caption}\n\nالحلقة {i}" if i == 1 else f"الحلقة {i}",
-                                         is_video=True, video_info=info)
-    else:
-        # حلقة واحدة فقط
-        print("📤 رفع الحلقة...")
-        await upload_with_progress(client, entity, video_files[0], 
-                                 caption=caption, is_video=True, video_info=video_infos[0])
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⚠️ تم الإلغاء يدوياً")
+        print("\\n⚠️ تم الإلغاء")
         sys.exit(130)
     except Exception as e:
-        print(f"\n❌ خطأ: {str(e)}", file=sys.stderr)
+        print(f"\\n❌ خطأ: {str(e)}", file=sys.stderr)
         sys.exit(1)
+'''
+
+# حفظ الملف
+with open('/mnt/kimi/output/upload_fixed.py', 'w', encoding='utf-8') as f:
+    f.write(script_content)
+
+print("✅ تم إنشاء السكربت المحسن")
+print("📁 المسار: upload_fixed.py")
