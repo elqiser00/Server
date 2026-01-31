@@ -1,5 +1,5 @@
 
-# إنشاء السكربت بنفس الاسم القديم upload.py
+# السكربت النهائي الصحيح - فقط محتوى upload.py
 script_content = '''#!/usr/bin/env python3
 import os
 import sys
@@ -244,12 +244,4 @@ if __name__ == "__main__":
         sys.exit(1)
 '''
 
-# حفظ الملف باسم upload.py
-with open('/mnt/kimi/output/upload.py', 'w', encoding='utf-8') as f:
-    f.write(script_content)
-
-print("✅ تم إنشاء السكربت بنجاح")
-print("📁 اسم الملف: upload.py (نفس الاسم القديم)")
-print("\\n📋 محتوى السكربت:")
-print("="*60)
 print(script_content)
