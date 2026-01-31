@@ -9,14 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import (
-    DocumentAttributeVideo,
-    InputMediaUploadedPhoto,
-    InputMediaUploadedDocument,
-    InputSingleMedia
-)
-from telethon.tl.functions.messages import SendMultiMediaRequest
-from telethon.utils import get_input_peer
+from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
@@ -33,7 +26,7 @@ async def download_file(url, save_path):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        
+
         for attempt in range(2):
             try:
                 response = requests.get(
@@ -48,12 +41,12 @@ async def download_file(url, save_path):
                 if attempt == 0:
                     continue
                 raise
-        
+
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-        
+
         size_mb = os.path.getsize(save_path) / 1024 / 1024
         return size_mb
     except Exception as e:
@@ -71,7 +64,7 @@ def get_video_info(video_path):
             '-of', 'json', video_path
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
+
         if result.returncode == 0:
             data = json.loads(result.stdout)
             width = data.get('streams', [{}])[0].get('width', 1280)
@@ -79,7 +72,7 @@ def get_video_info(video_path):
             duration = data.get('streams', [{}])[0].get('duration')
             if not duration:
                 duration = data.get('format', {}).get('duration', 0)
-            
+
             return {
                 'width': width,
                 'height': height,
@@ -87,7 +80,7 @@ def get_video_info(video_path):
             }
     except:
         pass
-    
+
     return {'width': 1280, 'height': 720, 'duration': 0}
 
 def prepare_thumbnail(image_path, output_path):
@@ -106,33 +99,33 @@ async def main():
     print("="*60)
     print("🚀 سكريبت رفع الأفلام على تيليجرام")
     print("="*60)
-    
+
     # التحقق من المتغيرات
     required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
     missing = [var for var in required if not os.getenv(var, '').strip()]
     if missing:
         raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
-    
+
     channel = os.getenv('CHANNEL', '').strip()
     caption = os.getenv('CAPTION', '').replace('\\n', '\n').strip()
     img_url = os.getenv('IMAGE_URL', '').strip()
     vid_url = os.getenv('VIDEO_URL', '').strip()
     vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
-    
+
     if not img_url or not vid_url:
         raise Exception("مطلوب IMAGE_URL و VIDEO_URL")
-    
+
     # إعداد العميل
     client = TelegramClient(
         StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
         int(os.getenv('TELEGRAM_API_ID')),
         os.getenv('TELEGRAM_API_HASH')
     )
-    
+
     await client.start()
     me = await client.get_me()
     print(f"✅ تم تسجيل الدخول: {me.first_name}")
-    
+
     # الحصول على الكيان
     try:
         if channel.startswith('@'):
@@ -144,7 +137,7 @@ async def main():
         print(f"📢 القناة: {entity.title if hasattr(entity, 'title') else channel}")
     except Exception as e:
         raise Exception(f"تعذر الوصول للقناة: {e}")
-    
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
             # 1. تحميل البوستر
@@ -153,9 +146,9 @@ async def main():
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
             img_path = os.path.join(tmp_dir, f"poster{img_ext}")
-            
+
             img_size = await download_file(img_url, img_path)
-            
+
             # تحويل WebP لـ JPG
             if img_path.lower().endswith('.webp'):
                 try:
@@ -164,70 +157,56 @@ async def main():
                     img_path = jpg_path
                 except:
                     pass
-            
+
             print(f"✅ تم تحميل الصورة ({img_size:.1f} MB)")
-            
+
             # 2. تحميل الفيديو
             print("📥 جاري تحميل الفيديو...", end=" ")
             vid_name_clean = sanitize_filename(vid_name)
             vid_path = os.path.join(tmp_dir, f"{vid_name_clean}.mp4")
-            
+
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو ({vid_size:.1f} MB)")
-            
+
             # 3. معلومات الفيديو
             print("🔍 جاري استخراج معلومات الفيديو...", end=" ")
             video_info = get_video_info(vid_path)
             print(f"✅ ({video_info['width']}x{video_info['height']}, {video_info['duration']}s)")
-            
+
             # 4. تحضير Thumbnail
             print("🖼️ جاري تحضير Thumbnail...", end=" ")
             thumb_path = os.path.join(tmp_dir, "thumb.jpg")
             if not prepare_thumbnail(img_path, thumb_path):
                 thumb_path = img_path
             print("✅")
-            
-            # 5. رفع Album
+
+            # 5. رفع Album باستخدام send_file (الطريقة الأسهل والأكثر استقراراً)
             print("\n📤 جاري رفع Album...")
-            print("   ⏳ رفع البوستر والفيديو...")
-            
-            # رفع الملفات
-            uploaded_photo = await client.upload_file(img_path)
-            uploaded_video = await client.upload_file(vid_path)
-            uploaded_thumb = await client.upload_file(thumb_path) if os.path.exists(thumb_path) else None
-            
-            print("   ⏳ إرسال الرسالة...")
-            
-            # إنشاء Media
-            photo_media = InputMediaUploadedPhoto(uploaded_photo)
-            
-            video_media = InputMediaUploadedDocument(
-                file=uploaded_video,
-                mime_type='video/mp4',
-                attributes=[DocumentAttributeVideo(
-                    duration=video_info['duration'],
-                    w=video_info['width'],
-                    h=video_info['height'],
-                    supports_streaming=True
-                )],
-                thumb=uploaded_thumb,
-                force_file=False
+
+            # إعداد attributes للفيديو
+            video_attributes = DocumentAttributeVideo(
+                duration=video_info['duration'],
+                w=video_info['width'],
+                h=video_info['height'],
+                supports_streaming=True
             )
-            
-            media_list = [
-                InputSingleMedia(media=photo_media, message=caption, entities=[]),
-                InputSingleMedia(media=video_media, message='', entities=[])
-            ]
-            
-            await client(SendMultiMediaRequest(
-                peer=get_input_peer(entity),
-                multi_media=media_list
-            ))
-            
+
+            # رفع Album: قائمة تحتوي على [صورة, فيديو]
+            # الكابشن يكون على الصورة فقط (أول عنصر)
+            await client.send_file(
+                entity,
+                file=[img_path, vid_path],  # Album: صورة + فيديو
+                caption=caption,  # الكابشن على الصورة فقط
+                force_document=False,  # False = الصورة تظهر كصورة (مضغوطة)
+                supports_streaming=True,
+                attributes={1: [video_attributes]},  # attributes للفيديو فقط (العنصر رقم 2)
+                thumb=thumb_path  # Thumbnail للفيديو
+            )
+
             print("\n" + "="*60)
             print("✅ تم رفع Album بنجاح!")
             print("="*60)
-            
+
         finally:
             await client.disconnect()
 
@@ -240,3 +219,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ خطأ: {str(e)}", file=sys.stderr)
         sys.exit(1)
+
+\n============================================================
+✅ انسخ الكود ده وحطه في ملف upload.py
+============================================================
