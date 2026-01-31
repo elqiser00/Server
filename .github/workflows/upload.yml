@@ -18,7 +18,7 @@ on:
         type: string
       
       caption:
-        description: 'الكابشن/الوصف (استخدم \\n للفصل بين الأسطر)'
+        description: 'الكابشن/الوصف (استخدم \n للفصل بين الأسطر)'
         required: true
         type: string
       
@@ -52,30 +52,34 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: 🎬 تثبيت FFmpeg (مهم لاستخراج Thumbnail)
+      - name: 🎬 تثبيت FFmpeg
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
-          ffmpeg -version | head -1
-          ffprobe -version | head -1
-          echo "✅ FFmpeg و FFprobe تم التثبيت بنجاح"
+          echo "✅ FFmpeg جاهز"
       
       - name: 📦 تثبيت المكتبات
         run: |
           pip install --upgrade pip
           pip install telethon requests urllib3 pillow
       
-      - name: 🔒 التحقق من الأسرار
-        env:
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+      - name: 🔒 التحقق من الأسرار والملفات
         run: |
-          if [ -z "$TELEGRAM_API_ID" ] || [ -z "$TELEGRAM_API_HASH" ] || [ -z "$TELEGRAM_SESSION_STRING" ]; then
+          # التحقق من الأسرار
+          if [ -z "${{ secrets.TELEGRAM_API_ID }}" ] || [ -z "${{ secrets.TELEGRAM_API_HASH }}" ] || [ -z "${{ secrets.TELEGRAM_SESSION_STRING }}" ]; then
             echo "❌ المتغيرات السرية غير مكتملة"
             exit 1
           fi
-          echo "✅ تم التحقق من الأسرار"
+          
+          # التحقق من وجود ملف upload.py
+          if [ ! -f "upload.py" ]; then
+            echo "❌ ملف upload.py غير موجود في الريبو!"
+            echo "📁 الملفات الموجودة:"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✅ جميع التحققيات ناجحة"
       
       - name: 🚀 تشغيل السكريبت
         env:
@@ -89,11 +93,19 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
         run: |
-          python upload.py || exit 1
+          echo "🚀 جاري تشغيل السكريبت..."
+          python upload.py
       
       - name: ✅ نجاح
         if: success()
         run: |
           echo "=========================================="
           echo "🎉 تم الرفع بنجاح!"
+          echo "=========================================="
+      
+      - name: ❌ فشل
+        if: failure()
+        run: |
+          echo "=========================================="
+          echo "💥 فشلت العملية!"
           echo "=========================================="
