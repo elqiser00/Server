@@ -1,6 +1,4 @@
-
-# السكربت النهائي الصحيح - فقط محتوى upload.py
-script_content = '''#!/usr/bin/env python3
+#!/usr/bin/env python3
 import os
 import sys
 import asyncio
@@ -116,7 +114,7 @@ async def main():
         raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
     
     channel = os.getenv('CHANNEL', '').strip()
-    caption = os.getenv('CAPTION', '').replace('\\\\n', '\\n').strip()
+    caption = os.getenv('CAPTION', '').replace('\\n', '\n').strip()
     img_url = os.getenv('IMAGE_URL', '').strip()
     vid_url = os.getenv('VIDEO_URL', '').strip()
     vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
@@ -150,7 +148,7 @@ async def main():
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
             # 1. تحميل البوستر
-            print("\\n📥 جاري تحميل البوستر...", end=" ")
+            print("\n📥 جاري تحميل البوستر...", end=" ")
             img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
@@ -190,7 +188,7 @@ async def main():
             print("✅")
             
             # 5. رفع Album
-            print("\\n📤 جاري رفع Album...")
+            print("\n📤 جاري رفع Album...")
             print("   ⏳ رفع البوستر والفيديو...")
             
             # رفع الملفات
@@ -226,7 +224,7 @@ async def main():
                 multi_media=media_list
             ))
             
-            print("\\n" + "="*60)
+            print("\n" + "="*60)
             print("✅ تم رفع Album بنجاح!")
             print("="*60)
             
@@ -237,11 +235,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\\n⚠️ تم الإلغاء")
+        print("\n⚠️ تم الإلغاء")
         sys.exit(130)
     except Exception as e:
-        print(f"\\n❌ خطأ: {str(e)}", file=sys.stderr)
+        print(f"\n❌ خطأ: {str(e)}", file=sys.stderr)
         sys.exit(1)
-'''
-
-print(script_content)
