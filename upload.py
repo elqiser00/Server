@@ -1,6 +1,4 @@
-
-# إنشاء السكربت الصحيح بدون أي أخطاء
-script_content = '''#!/usr/bin/env python3
+#!/usr/bin/env python3
 import os
 import sys
 import asyncio
@@ -23,32 +21,21 @@ def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def download_file(url, save_path):
-    """تحميل ملف بدون مؤشر تقدم"""
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         for attempt in range(2):
             try:
-                response = requests.get(
-                    url, stream=True, 
-                    verify=(attempt == 0), 
-                    headers=headers,
-                    timeout=1200
-                )
+                response = requests.get(url, stream=True, verify=(attempt == 0), headers=headers, timeout=1200)
                 response.raise_for_status()
                 break
             except (requests.exceptions.SSLError, ssl.SSLError):
                 if attempt == 0:
                     continue
                 raise
-        
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-        
         size_mb = os.path.getsize(save_path) / 1024 / 1024
         return size_mb
     except Exception as e:
@@ -57,16 +44,9 @@ async def download_file(url, save_path):
         raise Exception(f"فشل التحميل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو"""
     try:
-        cmd = [
-            'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height,duration',
-            '-show_entries', 'format=duration',
-            '-of', 'json', video_path
-        ]
+        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,duration', '-show_entries', 'format=duration', '-of', 'json', video_path]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
         if result.returncode == 0:
             data = json.loads(result.stdout)
             width = data.get('streams', [{}])[0].get('width', 1280)
@@ -74,19 +54,12 @@ def get_video_info(video_path):
             duration = data.get('streams', [{}])[0].get('duration')
             if not duration:
                 duration = data.get('format', {}).get('duration', 0)
-            
-            return {
-                'width': width,
-                'height': height,
-                'duration': int(float(duration)) if duration else 0
-            }
+            return {'width': width, 'height': height, 'duration': int(float(duration)) if duration else 0}
     except:
         pass
-    
     return {'width': 1280, 'height': 720, 'duration': 0}
 
 def prepare_thumbnail(image_path, output_path):
-    """تحضير Thumbnail للفيديو"""
     try:
         img = Image.open(image_path)
         if img.mode in ('RGBA', 'LA', 'P'):
@@ -102,14 +75,13 @@ async def main():
     print("🚀 سكريبت رفع الأفلام على تيليجرام")
     print("="*60)
     
-    # التحقق من المتغيرات
     required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
     missing = [var for var in required if not os.getenv(var, '').strip()]
     if missing:
         raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
     
     channel = os.getenv('CHANNEL', '').strip()
-    caption = os.getenv('CAPTION', '').replace('\\\\n', '\\n').strip()
+    caption = os.getenv('CAPTION', '').replace('\\n', '\n').strip()
     img_url = os.getenv('IMAGE_URL', '').strip()
     vid_url = os.getenv('VIDEO_URL', '').strip()
     vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
@@ -117,7 +89,6 @@ async def main():
     if not img_url or not vid_url:
         raise Exception("مطلوب IMAGE_URL و VIDEO_URL")
     
-    # إعداد العميل
     client = TelegramClient(
         StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
         int(os.getenv('TELEGRAM_API_ID')),
@@ -128,7 +99,6 @@ async def main():
     me = await client.get_me()
     print(f"✅ تم تسجيل الدخول: {me.first_name}")
     
-    # الحصول على الكيان
     try:
         if channel.startswith('@'):
             entity = await client.get_entity(channel)
@@ -142,8 +112,7 @@ async def main():
     
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
-            # 1. تحميل البوستر
-            print("\\n📥 جاري تحميل البوستر...", end=" ")
+            print("\n📥 جاري تحميل البوستر...", end=" ")
             img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
@@ -151,7 +120,6 @@ async def main():
             
             img_size = await download_file(img_url, img_path)
             
-            # تحويل WebP لـ JPG
             if img_path.lower().endswith('.webp'):
                 try:
                     jpg_path = img_path.replace('.webp', '.jpg')
@@ -162,7 +130,6 @@ async def main():
             
             print(f"✅ تم تحميل الصورة ({img_size:.1f} MB)")
             
-            # 2. تحميل الفيديو
             print("📥 جاري تحميل الفيديو...", end=" ")
             vid_name_clean = sanitize_filename(vid_name)
             vid_path = os.path.join(tmp_dir, f"{vid_name_clean}.mp4")
@@ -170,22 +137,18 @@ async def main():
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو ({vid_size:.1f} MB)")
             
-            # 3. معلومات الفيديو
             print("🔍 جاري استخراج معلومات الفيديو...", end=" ")
             video_info = get_video_info(vid_path)
             print(f"✅ ({video_info['width']}x{video_info['height']}, {video_info['duration']}s)")
             
-            # 4. تحضير Thumbnail
             print("🖼️ جاري تحضير Thumbnail...", end=" ")
             thumb_path = os.path.join(tmp_dir, "thumb.jpg")
             if not prepare_thumbnail(img_path, thumb_path):
                 thumb_path = img_path
             print("✅")
             
-            # 5. رفع Album
-            print("\\n📤 جاري رفع Album...")
+            print("\n📤 جاري رفع Album...")
             
-            # إعداد attributes للفيديو
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
@@ -193,7 +156,6 @@ async def main():
                 supports_streaming=True
             )
             
-            # رفع Album: قائمة تحتوي على [صورة, فيديو]
             await client.send_file(
                 entity,
                 file=[img_path, vid_path],
@@ -204,7 +166,7 @@ async def main():
                 thumb=thumb_path
             )
             
-            print("\\n" + "="*60)
+            print("\n" + "="*60)
             print("✅ تم رفع Album بنجاح!")
             print("="*60)
             
@@ -215,11 +177,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\\n⚠️ تم الإلغاء")
+        print("\n⚠️ تم الإلغاء")
         sys.exit(130)
     except Exception as e:
-        print(f"\\n❌ خطأ: {str(e)}", file=sys.stderr)
+        print(f"\n❌ خطأ: {str(e)}", file=sys.stderr)
         sys.exit(1)
-'''
-
-print(script_content)
