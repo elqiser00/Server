@@ -10,7 +10,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedPhoto, InputMediaUploadedDocument
+from telethon.tl.functions.messages import SendMultiMediaRequest
+from telethon.tl.types import InputSingleMedia
 from PIL import Image
 import requests
 import ssl
@@ -81,11 +83,10 @@ def get_video_info(video_path):
     return {'width': 1280, 'height': 720, 'duration': 0}
 
 def convert_image_to_jpg(image_path, output_path):
-    """تحويل أي صورة لـ JPEG عشان تظهر صح في Telegram"""
+    """تحويل أي صورة لـ JPEG"""
     try:
         print("🔄 تحويل الصورة لـ JPEG...", end=" ")
         with Image.open(image_path) as img:
-            # تحويل لـ RGB لو لازم
             if img.mode in ('RGBA', 'LA', 'P'):
                 background = Image.new('RGB', img.size, (0, 0, 0))
                 if img.mode == 'P':
@@ -96,7 +97,6 @@ def convert_image_to_jpg(image_path, output_path):
                 else:
                     img = img.convert('RGB')
             
-            # حفظ كـ JPEG
             img.save(output_path, 'JPEG', quality=95, optimize=True)
         
         size_kb = os.path.getsize(output_path) / 1024
@@ -109,7 +109,7 @@ def convert_image_to_jpg(image_path, output_path):
 def extract_video_thumbnail(video_path, output_path, time_sec=5):
     """استخراج frame من الفيديو كـ thumbnail"""
     try:
-        print(f"🎬 استخراج thumbnail من الفيديو (عند {time_sec} ثانية)...", end=" ")
+        print(f"🎬 استخراج thumbnail من الفيديو...", end=" ")
         
         cmd = [
             'ffmpeg', '-ss', str(time_sec), '-i', video_path,
@@ -133,11 +133,10 @@ def extract_video_thumbnail(video_path, output_path, time_sec=5):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album (صورة + فيديو) - النسخة النهائية")
+    print("🚀 سكريبت رفع Album - النسخة المعدلة")
     print("="*70)
     
     try:
-        # التحقق من المتغيرات
         required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
         missing = [var for var in required if not os.getenv(var, '').strip()]
         if missing:
@@ -155,7 +154,6 @@ async def main():
         print(f"📝 الكابشن: {caption[:50]}...")
         print(f"🎬 اسم الفيديو: {vid_name}")
         
-        # إعداد العميل
         print("\n🔌 جاري الاتصال بتيليجرام...", end=" ")
         client = TelegramClient(
             StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
@@ -167,7 +165,6 @@ async def main():
         me = await client.get_me()
         print(f"✅ متصل كـ: {me.first_name}")
         
-        # الحصول على الكيان
         try:
             if channel.startswith('@'):
                 entity = await client.get_entity(channel)
@@ -200,16 +197,15 @@ async def main():
             raw_img_path = os.path.join(tmp_dir, f"raw_poster{img_ext}")
             await download_file(img_url, raw_img_path)
             
-            # تحويل لـ JPEG (مهم جداً عشان تظهر كصورة مش ملف)
             img_path = os.path.join(tmp_dir, "poster.jpg")
             if not convert_image_to_jpg(raw_img_path, img_path):
-                img_path = raw_img_path  # لو فشل التحويل، استخدم الأصلية
+                img_path = raw_img_path
             
-            print(f"✅ الصورة جاهزة: {img_path}")
+            print(f"✅ الصورة جاهزة")
             
             # 2. تحميل الفيديو
             print("\n" + "-"*70)
-            print(f"📥 [2/4] جاري تحميل الفيديو ({vid_name})...")
+            print(f"📥 [2/4] جاري تحميل الفيديو...")
             print("-"*70)
             
             vid_name_clean = sanitize_filename(vid_name)
@@ -218,60 +214,82 @@ async def main():
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو: {vid_size:.2f} MB")
             
-            # 3. معلومات الفيديو واستخراج thumbnail
+            # 3. معلومات الفيديو وthumbnail
             print("\n" + "-"*70)
-            print("🔍 [3/4] جاري استخراج معلومات الفيديو وthumbnail...")
+            print("🔍 [3/4] جاري استخراج معلومات الفيديو...")
             print("-"*70)
             
             video_info = get_video_info(vid_path)
             print(f"📐 دقة الفيديو: {video_info['width']}x{video_info['height']}")
             print(f"⏱️  مدة الفيديو: {video_info['duration']} ثانية")
             
-            # استخراج thumbnail من الفيديو نفسه (أفضل حاجة)
+            # استخراج thumbnail من الفيديو
             video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
             if not extract_video_thumbnail(vid_path, video_thumb_path, time_sec=10):
-                # لو فشل، نستخدم الصورة
-                print("⚠️ استخدام الصورة كـ thumbnail للفيديو")
+                print("⚠️ استخدام الصورة كـ thumbnail")
                 video_thumb_path = img_path
             
-            # 4. رفع Album (صورة + فيديو في نفس البوست)
+            # 4. رفع Album باستخدام SendMultiMediaRequest
             print("\n" + "-"*70)
-            print("📤 [4/4] رفع Album (صورة + فيديو)...")
+            print("📤 [4/4] رفع Album...")
             print("-"*70)
             
-            # إعداد attributes للفيديو
+            # رفع الصورة
+            print("⏳ رفع الصورة...")
+            uploaded_photo = await client.upload_file(img_path)
+            
+            # رفع الفيديو مع thumbnail
+            print("⏳ رفع الفيديو...")
+            uploaded_video = await client.upload_file(vid_path)
+            
+            # رفع thumbnail كـ صورة منفصلة
+            print("⏳ رفع thumbnail...")
+            uploaded_thumb = await client.upload_file(video_thumb_path)
+            
+            # إعداد الـ media للـ Album
+            photo_media = InputMediaUploadedPhoto(
+                file=uploaded_photo
+            )
+            
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
                 h=video_info['height'],
-                supports_streaming=True
+                supports_streaming=True  # مهم جداً للـ streaming
             )
             
-            print("⏳ جاري رفع Album...")
-            
-            # الطريقة الصحيحة لرفع Album في Telethon
-            # نستخدم send_file مع قائمة ونحدد clear_draft=False
-            album = await client.send_file(
-                entity,
-                file=[img_path, vid_path],  # قائمة بالملفات
-                caption=caption,  # الكابشن على أول عنصر (الصورة)
-                force_document=False,  # عشان يظهروا كصورة وفيديو
-                clear_draft=False,
-                attributes=[None, [video_attributes]],  # attributes للفيديو بس
-                thumb=video_thumb_path,  # thumbnail للفيديو
+            video_media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[video_attributes],
+                thumb=uploaded_thumb  # Thumbnail للفيديو
             )
             
-            if isinstance(album, list):
-                print(f"✅ تم رفع Album بنجاح! ({len(album)} عناصر في نفس البوست)")
-                for i, msg in enumerate(album):
-                    print(f"   - عنصر {i+1}: Msg ID {msg.id}")
-            else:
-                print(f"✅ تم الرفع بنجاح! Msg ID: {album.id}")
+            # إرسال Album
+            print("⏳ إرسال Album...")
+            
+            media_list = [
+                InputSingleMedia(
+                    media=photo_media,
+                    message=caption  # الكابشن على الصورة
+                ),
+                InputSingleMedia(
+                    media=video_media,
+                    message=''  # مفيش كابشن على الفيديو
+                )
+            ]
+            
+            result = await client(SendMultiMediaRequest(
+                peer=entity,
+                multi_media=media_list
+            ))
+            
+            print(f"✅ تم رفع Album بنجاح! ({len(result.updates)} عناصر)")
             
             print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
-            print("📸 الصورة: على الشمال (JPEG)")
-            print("🎬 الفيديو: على اليمين (مع thumbnail من الفيديو)")
+            print("📸 الصورة: على الشمال")
+            print("🎬 الفيديو: على اليمين (streaming + thumbnail)")
             print("="*70)
             
     except Exception as e:
