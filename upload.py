@@ -1,6 +1,4 @@
-
-# إنشاء السكربت المحسن مع رسائل واضحة وThumbnail صحيح
-script_content = '''#!/usr/bin/env python3
+#!/usr/bin/env python3
 import os
 import sys
 import asyncio
@@ -85,24 +83,71 @@ def get_video_info(video_path):
     
     return {'width': 1280, 'height': 720, 'duration': 0}
 
-def prepare_thumbnail_for_video(image_path, output_path):
+def prepare_image_for_telegram(image_path, output_path, target_size=1280):
     """
-    تحضير Thumbnail مثالي للفيديو
-    - مربع (1:1) عشان Telegram يعرضه صح
+    تحضير الصورة للرفع على تيليجرام بالشكل المربع المثالي
+    - مربع (1:1) زي Telegram Desktop
+    - حجم كبير بس مش كبير قوي (1280x1280)
     - JPG بجودة عالية
-    - حجم مناسب (أقل من 200KB)
     """
     try:
-        print("🔧 معالجة الصورة للـ Thumbnail...", end=" ")
+        print("🔧 معالجة الصورة للرفع...", end=" ")
         
         # فتح الصورة
         img = Image.open(image_path)
         
         # تحويل لـ RGB
         if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (0, 0, 0))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode in ('RGBA', 'LA'):
+                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                img = background
+            else:
+                img = img.convert('RGB')
+        elif img.mode != 'RGB':
             img = img.convert('RGB')
         
         # قص الصورة لتكون مربعة (من المنتصف)
+        width, height = img.size
+        
+        # لو الصورة طويلة (Portrait) أو عريضة (Landscape)، نقصها للمربع
+        if width != height:
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            right = left + min_dim
+            bottom = top + min_dim
+            img = img.crop((left, top, right, bottom))
+        
+        # تغيير الحجم للـ target_size (1280x1280 مثالي لتيليجرام)
+        img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+        
+        # حفظ بجودة عالية
+        img.save(output_path, 'JPEG', quality=95, optimize=True)
+        
+        size_kb = os.path.getsize(output_path) / 1024
+        print(f"✅ ({img.size[0]}x{img.size[1]}, {size_kb:.1f} KB)")
+        return True
+        
+    except Exception as e:
+        print(f"❌ فشل: {e}")
+        return False
+
+def prepare_thumbnail_for_video(image_path, output_path):
+    """
+    تحضير Thumbnail صغير للفيديو (320x320)
+    """
+    try:
+        print("🔧 تحضير Thumbnail للفيديو...", end=" ")
+        
+        img = Image.open(image_path)
+        
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        # مربع صغير للفيديو thumbnail
         width, height = img.size
         if width != height:
             min_dim = min(width, height)
@@ -112,10 +157,7 @@ def prepare_thumbnail_for_video(image_path, output_path):
             bottom = top + min_dim
             img = img.crop((left, top, right, bottom))
         
-        # تغيير الحجم للـ 640x640 (مثالي لـ Telegram)
-        img = img.resize((640, 640), Image.Resampling.LANCZOS)
-        
-        # حفظ بجودة متوسطة (عشان الحجم)
+        img = img.resize((320, 320), Image.Resampling.LANCZOS)
         img.save(output_path, 'JPEG', quality=85, optimize=True)
         
         size_kb = os.path.getsize(output_path) / 1024
@@ -128,7 +170,7 @@ def prepare_thumbnail_for_video(image_path, output_path):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع الأفلام على تيليجرام - مع Thumbnail مثالي")
+    print("🚀 سكريبت رفع الأفلام على تيليجرام - إصدار مربع مثل Desktop")
     print("="*70)
     
     # التحقق من المتغيرات
@@ -138,7 +180,7 @@ async def main():
         raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
     
     channel = os.getenv('CHANNEL', '').strip()
-    caption = os.getenv('CAPTION', '').replace('\\\\n', '\\n').strip()
+    caption = os.getenv('CAPTION', '').replace('\\\\n', '\n').strip()
     img_url = os.getenv('IMAGE_URL', '').strip()
     vid_url = os.getenv('VIDEO_URL', '').strip()
     vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
@@ -150,7 +192,7 @@ async def main():
     print(f"🎬 اسم الفيديو: {vid_name}")
     
     # إعداد العميل
-    print("\\n🔌 جاري الاتصال بتيليجرام...", end=" ")
+    print("\n🔌 جاري الاتصال بتيليجرام...", end=" ")
     client = TelegramClient(
         StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
         int(os.getenv('TELEGRAM_API_ID')),
@@ -176,32 +218,42 @@ async def main():
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
             # 1. تحميل البوستر
-            print("\\n" + "-"*70)
+            print("\n" + "-"*70)
             print("📥 [1/4] جاري تحميل البوستر...")
             print("-"*70)
             
             img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
-            img_path = os.path.join(tmp_dir, f"poster{img_ext}")
+            raw_img_path = os.path.join(tmp_dir, f"raw_poster{img_ext}")
             
-            img_size = await download_file(img_url, img_path)
+            img_size = await download_file(img_url, raw_img_path)
             print(f"✅ تم تحميل البوستر: {img_size:.2f} MB")
             
             # تحويل WebP لـ JPG لو لازم
-            if img_path.lower().endswith('.webp'):
+            if raw_img_path.lower().endswith('.webp'):
                 try:
                     print("🔄 تحويل WebP إلى JPG...", end=" ")
-                    jpg_path = img_path.replace('.webp', '.jpg')
-                    Image.open(img_path).convert('RGB').save(jpg_path, 'JPEG', quality=95)
-                    img_path = jpg_path
+                    jpg_path = raw_img_path.replace('.webp', '.jpg')
+                    Image.open(raw_img_path).convert('RGB').save(jpg_path, 'JPEG', quality=95)
+                    raw_img_path = jpg_path
                     print("✅")
                 except Exception as e:
                     print(f"⚠️ فشل التحويل: {e}")
             
-            # 2. تحميل الفيديو
-            print("\\n" + "-"*70)
-            print(f"📥 [2/4] جاري تحميل الفيديو ({vid_name})...")
+            # 2. معالجة الصورة للمربع (الخطوة الجديدة المهمة!)
+            print("\n" + "-"*70)
+            print("🎨 [2/4] معالجة الصورة لتكون مربعة مثل Telegram Desktop...")
+            print("-"*70)
+            
+            processed_img_path = os.path.join(tmp_dir, "processed_poster.jpg")
+            if not prepare_image_for_telegram(raw_img_path, processed_img_path, target_size=1280):
+                print("⚠️ سيتم استخدام الصورة الأصلية")
+                processed_img_path = raw_img_path
+            
+            # 3. تحميل الفيديو
+            print("\n" + "-"*70)
+            print(f"📥 [3/4] جاري تحميل الفيديو ({vid_name})...")
             print("-"*70)
             
             vid_name_clean = sanitize_filename(vid_name)
@@ -210,31 +262,31 @@ async def main():
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو: {vid_size:.2f} MB")
             
-            # 3. معلومات الفيديو وتحضير Thumbnail
-            print("\\n" + "-"*70)
-            print("🔍 [3/4] جاري استخراج معلومات الفيديو وتحضير Thumbnail...")
+            # 4. معلومات الفيديو وتحضير Thumbnail
+            print("\n" + "-"*70)
+            print("🔍 [4/4] جاري استخراج معلومات الفيديو وتحضير Thumbnail...")
             print("-"*70)
             
             video_info = get_video_info(vid_path)
             print(f"📐 دقة الفيديو: {video_info['width']}x{video_info['height']}")
             print(f"⏱️  مدة الفيديو: {video_info['duration']} ثانية")
             
-            # تحضير Thumbnail مثالي
+            # تحضير Thumbnail صغير للفيديو (من الصورة المعالجة)
             thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
-            if not prepare_thumbnail_for_video(img_path, thumb_path):
-                print("⚠️ سيتم استخدام البوستر الأصلي كـ Thumbnail")
-                thumb_path = img_path
+            if not prepare_thumbnail_for_video(processed_img_path, thumb_path):
+                print("⚠️ سيتم استخدام الصورة المعالجة كـ Thumbnail")
+                thumb_path = processed_img_path
             
-            # 4. رفع Album
-            print("\\n" + "-"*70)
-            print("📤 [4/4] جاري رفع Album على تيليجرام...")
+            # 5. رفع Album
+            print("\n" + "-"*70)
+            print("📤 رفع Album على تيليجرام...")
             print("-"*70)
-            print("⏳ جاري رفع البوستر...")
+            print("⏳ جاري رفع البوستر المربع...")
             
-            # رفع الصورة أولاً (عشان نتأكد إنها اترفعت)
+            # رفع الصورة المربعة (المعالجة)
             photo_msg = await client.send_file(
                 entity,
-                img_path,
+                processed_img_path,  # <-- الصورة المربعة المعالجة
                 caption=caption,
                 force_document=False
             )
@@ -254,7 +306,7 @@ async def main():
             video_msg = await client.send_file(
                 entity,
                 vid_path,
-                reply_to=photo_msg.id,  # رد على الصورة عشان يبقوا Album
+                reply_to=photo_msg.id,
                 attributes=[video_attributes],
                 thumb=thumb_path,
                 supports_streaming=True,
@@ -263,28 +315,22 @@ async def main():
             
             print(f"✅ تم رفع الفيديو (Msg ID: {video_msg.id})")
             
-            print("\\n" + "="*70)
+            print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
-            print("📸 الصورة: بوستر الفيلم (جودة عالية)")
-            print("🎬 الفيديو: مع البوستر كـ Thumbnail")
+            print("📸 الصورة: مربعة 1280x1280 (زي Telegram Desktop)")
+            print("🎬 الفيديو: مع Thumbnail مربع")
             print("="*70)
             
         finally:
             await client.disconnect()
-            print("\\n🔌 تم قطع الاتصال بتيليجرام")
+            print("\n🔌 تم قطع الاتصال بتيليجرام")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\\n\\n⚠️ تم إيقاف السكريبت يدوياً")
+        print("\n\n⚠️ تم إيقاف السكريبت يدوياً")
         sys.exit(130)
     except Exception as e:
-        print(f"\\n\\n❌ خطأ: {str(e)}", file=sys.stderr)
+        print(f"\n\n❌ خطأ: {str(e)}", file=sys.stderr)
         sys.exit(1)
-'''
-
-print(script_content)
-print("\\n" + "="*70)
-print("✅ انسخ الكود ده وحطه في ملف upload.py")
-print("="*70)
