@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedPhoto, InputMediaUploadedDocument
+from telethon.tl.functions.messages import SendMultiMediaRequest
 import requests
 import ssl
 import urllib3
@@ -38,14 +39,10 @@ async def download_file(url, save_path):
                     continue
                 raise
         
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
-        
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-                    downloaded += len(chunk)
         
         size_mb = os.path.getsize(save_path) / 1024 / 1024
         return size_mb
@@ -83,94 +80,39 @@ def get_video_info(video_path):
     
     return {'width': 1280, 'height': 720, 'duration': 0}
 
-def prepare_image_for_telegram(image_path, output_path, target_size=1280):
-    """
-    تحضير الصورة للرفع على تيليجرام بالشكل المربع المثالي
-    - مربع (1:1) زي Telegram Desktop
-    - حجم كبير بس مش كبير قوي (1280x1280)
-    - JPG بجودة عالية
-    """
-    try:
-        print("🔧 معالجة الصورة للرفع...", end=" ")
-        
-        # فتح الصورة
-        img = Image.open(image_path)
-        
-        # تحويل لـ RGB
-        if img.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img.size, (0, 0, 0))
-            if img.mode == 'P':
-                img = img.convert('RGBA')
-            if img.mode in ('RGBA', 'LA'):
-                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                img = background
-            else:
-                img = img.convert('RGB')
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
-        
-        # قص الصورة لتكون مربعة (من المنتصف)
-        width, height = img.size
-        
-        # لو الصورة طويلة (Portrait) أو عريضة (Landscape)، نقصها للمربع
-        if width != height:
-            min_dim = min(width, height)
-            left = (width - min_dim) // 2
-            top = (height - min_dim) // 2
-            right = left + min_dim
-            bottom = top + min_dim
-            img = img.crop((left, top, right, bottom))
-        
-        # تغيير الحجم للـ target_size (1280x1280 مثالي لتيليجرام)
-        img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
-        
-        # حفظ بجودة عالية
-        img.save(output_path, 'JPEG', quality=95, optimize=True)
-        
-        size_kb = os.path.getsize(output_path) / 1024
-        print(f"✅ ({img.size[0]}x{img.size[1]}, {size_kb:.1f} KB)")
-        return True
-        
-    except Exception as e:
-        print(f"❌ فشل: {e}")
-        return False
-
 def prepare_thumbnail_for_video(image_path, output_path):
     """
-    تحضير Thumbnail صغير للفيديو (320x320)
+    تحضير Thumbnail للفيديو - نفس أبعاد الصورة الأصلية
     """
     try:
         print("🔧 تحضير Thumbnail للفيديو...", end=" ")
         
-        img = Image.open(image_path)
-        
-        if img.mode in ('RGBA', 'LA', 'P'):
-            img = img.convert('RGB')
-        
-        # مربع صغير للفيديو thumbnail
-        width, height = img.size
-        if width != height:
-            min_dim = min(width, height)
-            left = (width - min_dim) // 2
-            top = (height - min_dim) // 2
-            right = left + min_dim
-            bottom = top + min_dim
-            img = img.crop((left, top, right, bottom))
-        
-        img = img.resize((320, 320), Image.Resampling.LANCZOS)
-        img.save(output_path, 'JPEG', quality=85, optimize=True)
-        
-        size_kb = os.path.getsize(output_path) / 1024
-        print(f"✅ ({size_kb:.1f} KB)")
-        return True
-        
+        with Image.open(image_path) as img:
+            # نحافظ على نفس الأبعاد بالظبط
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (0, 0, 0))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                if img.mode in ('RGBA', 'LA'):
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
+                else:
+                    img = img.convert('RGB')
+            
+            # نحفظ بنفس الأبعاد
+            img.save(output_path, 'JPEG', quality=95, optimize=True)
+            
+            size_kb = os.path.getsize(output_path) / 1024
+            print(f"✅ ({img.size[0]}x{img.size[1]}, {size_kb:.1f} KB)")
+            return True
+            
     except Exception as e:
         print(f"❌ فشل: {e}")
         return False
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع الأفلام على تيليجرام - إصدار مربع مثل Desktop")
+    print("🚀 سكريبت رفع Album (صورة + فيديو) في نفس البوست")
     print("="*70)
     
     # التحقق من المتغيرات
@@ -219,41 +161,46 @@ async def main():
         try:
             # 1. تحميل البوستر
             print("\n" + "-"*70)
-            print("📥 [1/4] جاري تحميل البوستر...")
+            print("📥 [1/3] جاري تحميل البوستر...")
             print("-"*70)
             
             img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
-            raw_img_path = os.path.join(tmp_dir, f"raw_poster{img_ext}")
+            img_path = os.path.join(tmp_dir, f"poster{img_ext}")
             
-            img_size = await download_file(img_url, raw_img_path)
-            print(f"✅ تم تحميل البوستر: {img_size:.2f} MB")
+            img_size = await download_file(img_url, img_path)
+            
+            # التحقق من أبعاد الصورة
+            with Image.open(img_path) as img:
+                orig_width, orig_height = img.size
+                aspect_ratio = orig_height / orig_width
+                print(f"✅ تم تحميل البوستر: {img_size:.2f} MB ({orig_width}x{orig_height}, ratio: {aspect_ratio:.2f})")
             
             # تحويل WebP لـ JPG لو لازم
-            if raw_img_path.lower().endswith('.webp'):
+            if img_path.lower().endswith('.webp'):
                 try:
                     print("🔄 تحويل WebP إلى JPG...", end=" ")
-                    jpg_path = raw_img_path.replace('.webp', '.jpg')
-                    Image.open(raw_img_path).convert('RGB').save(jpg_path, 'JPEG', quality=95)
-                    raw_img_path = jpg_path
+                    jpg_path = img_path.replace('.webp', '.jpg')
+                    with Image.open(img_path) as img:
+                        if img.mode in ('RGBA', 'LA', 'P'):
+                            background = Image.new('RGB', img.size, (0, 0, 0))
+                            if img.mode == 'P':
+                                img = img.convert('RGBA')
+                            if img.mode in ('RGBA', 'LA'):
+                                background.paste(img, mask=img.split()[-1])
+                                img = background
+                            else:
+                                img = img.convert('RGB')
+                        img.save(jpg_path, 'JPEG', quality=95, optimize=True)
+                    img_path = jpg_path
                     print("✅")
                 except Exception as e:
                     print(f"⚠️ فشل التحويل: {e}")
             
-            # 2. معالجة الصورة للمربع (الخطوة الجديدة المهمة!)
+            # 2. تحميل الفيديو
             print("\n" + "-"*70)
-            print("🎨 [2/4] معالجة الصورة لتكون مربعة مثل Telegram Desktop...")
-            print("-"*70)
-            
-            processed_img_path = os.path.join(tmp_dir, "processed_poster.jpg")
-            if not prepare_image_for_telegram(raw_img_path, processed_img_path, target_size=1280):
-                print("⚠️ سيتم استخدام الصورة الأصلية")
-                processed_img_path = raw_img_path
-            
-            # 3. تحميل الفيديو
-            print("\n" + "-"*70)
-            print(f"📥 [3/4] جاري تحميل الفيديو ({vid_name})...")
+            print(f"📥 [2/3] جاري تحميل الفيديو ({vid_name})...")
             print("-"*70)
             
             vid_name_clean = sanitize_filename(vid_name)
@@ -262,39 +209,33 @@ async def main():
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو: {vid_size:.2f} MB")
             
-            # 4. معلومات الفيديو وتحضير Thumbnail
+            # 3. معلومات الفيديو
             print("\n" + "-"*70)
-            print("🔍 [4/4] جاري استخراج معلومات الفيديو وتحضير Thumbnail...")
+            print("🔍 [3/3] جاري استخراج معلومات الفيديو...")
             print("-"*70)
             
             video_info = get_video_info(vid_path)
             print(f"📐 دقة الفيديو: {video_info['width']}x{video_info['height']}")
             print(f"⏱️  مدة الفيديو: {video_info['duration']} ثانية")
             
-            # تحضير Thumbnail صغير للفيديو (من الصورة المعالجة)
+            # تحضير Thumbnail للفيديو بنفس أبعاد الصورة
             thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
-            if not prepare_thumbnail_for_video(processed_img_path, thumb_path):
-                print("⚠️ سيتم استخدام الصورة المعالجة كـ Thumbnail")
-                thumb_path = processed_img_path
+            if not prepare_thumbnail_for_video(img_path, thumb_path):
+                thumb_path = img_path
             
-            # 5. رفع Album
+            # 4. رفع Album (صورة + فيديو في نفس البوست)
             print("\n" + "-"*70)
-            print("📤 رفع Album على تيليجرام...")
+            print("📤 رفع Album (صورة على الشمال، فيديو على اليمين)...")
             print("-"*70)
-            print("⏳ جاري رفع البوستر المربع...")
             
-            # رفع الصورة المربعة (المعالجة)
-            photo_msg = await client.send_file(
-                entity,
-                processed_img_path,  # <-- الصورة المربعة المعالجة
-                caption=caption,
-                force_document=False
-            )
-            print(f"✅ تم رفع البوستر (Msg ID: {photo_msg.id})")
+            # رفع الصورة أولاً (عشان نجيب الـ file_id)
+            print("⏳ جاري رفع الصورة...")
+            uploaded_photo = await client.upload_file(img_path)
             
-            print("⏳ جاري رفع الفيديو مع Thumbnail...")
+            # رفع الفيديو مع الـ thumbnail
+            print("⏳ جاري رفع الفيديو...")
             
-            # إعداد attributes للفيديو
+            # نجهز الـ attributes
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
@@ -302,23 +243,31 @@ async def main():
                 supports_streaming=True
             )
             
-            # رفع الفيديو كـ رد على الصورة (Album)
-            video_msg = await client.send_file(
-                entity,
+            # رفع الفيديو
+            uploaded_video = await client.upload_file(
                 vid_path,
-                reply_to=photo_msg.id,
-                attributes=[video_attributes],
-                thumb=thumb_path,
-                supports_streaming=True,
+                progress_callback=lambda uploaded, total: print(f"   📥 {uploaded/1024/1024:.1f}/{total/1024/1024:.1f} MB", end="\r")
+            )
+            
+            print("\n⏳ جاري إرسال Album...")
+            
+            # إنشاء الـ Album باستخدام send_file مع قائمة
+            # الطريقة الصحيحة لعمل Album في Telethon
+            album_messages = await client.send_file(
+                entity,
+                [img_path, vid_path],  # قائمة بالملفات
+                caption=caption,  # الكابشن على الصورة الأولى
+                attributes=[None, [video_attributes]],  # attributes للفيديو فقط
                 force_document=False
             )
             
-            print(f"✅ تم رفع الفيديو (Msg ID: {video_msg.id})")
+            print(f"✅ تم رفع Album بنجاح!")
+            print(f"📸 عدد الرسائل: {len(album_messages) if isinstance(album_messages, list) else 1}")
             
             print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
-            print("📸 الصورة: مربعة 1280x1280 (زي Telegram Desktop)")
-            print("🎬 الفيديو: مع Thumbnail مربع")
+            print("📸 الصورة: على الشمال (بالأبعاد الأصلية)")
+            print("🎬 الفيديو: على اليمين (مع نفس الـ thumbnail)")
             print("="*70)
             
         finally:
