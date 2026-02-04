@@ -5,6 +5,7 @@ import asyncio
 import tempfile
 import subprocess
 import json
+import traceback
 from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
@@ -83,50 +84,63 @@ async def main():
     print("🚀 سكريبت رفع Album (صورة + فيديو) - بدون تعديلات")
     print("="*70)
     
-    # التحقق من المتغيرات
-    required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
-    missing = [var for var in required if not os.getenv(var, '').strip()]
-    if missing:
-        raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
-    
-    channel = os.getenv('CHANNEL', '').strip()
-    caption = os.getenv('CAPTION', '').replace('\\\\n', '\n').strip()
-    img_url = os.getenv('IMAGE_URL', '').strip()
-    vid_url = os.getenv('VIDEO_URL', '').strip()
-    vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
-    
-    if not img_url or not vid_url:
-        raise Exception("مطلوب IMAGE_URL و VIDEO_URL")
-    
-    print(f"📝 الكابشن: {caption[:50]}...")
-    print(f"🎬 اسم الفيديو: {vid_name}")
-    
-    # إعداد العميل
-    print("\n🔌 جاري الاتصال بتيليجرام...", end=" ")
-    client = TelegramClient(
-        StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
-        int(os.getenv('TELEGRAM_API_ID')),
-        os.getenv('TELEGRAM_API_HASH')
-    )
-    
-    await client.start()
-    me = await client.get_me()
-    print(f"✅ متصل كـ: {me.first_name}")
-    
-    # الحصول على الكيان
     try:
-        if channel.startswith('@'):
-            entity = await client.get_entity(channel)
-        elif channel.startswith('-100'):
-            entity = await client.get_entity(int(channel))
-        else:
-            entity = await client.get_entity(channel)
-        print(f"📢 القناة المستهدفة: {entity.title if hasattr(entity, 'title') else channel}")
-    except Exception as e:
-        raise Exception(f"تعذر الوصول للقناة: {e}")
-    
-    with tempfile.TemporaryDirectory() as tmp_dir:
+        # التحقق من المتغيرات
+        required = ['CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
+        missing = [var for var in required if not os.getenv(var, '').strip()]
+        if missing:
+            raise Exception(f"المتغيرات المفقودة: {', '.join(missing)}")
+        
+        channel = os.getenv('CHANNEL', '').strip()
+        caption = os.getenv('CAPTION', '').replace('\\\\n', '\n').strip()
+        img_url = os.getenv('IMAGE_URL', '').strip()
+        vid_url = os.getenv('VIDEO_URL', '').strip()
+        vid_name = os.getenv('VIDEO_NAME', 'movie').strip() or 'movie'
+        
+        if not img_url or not vid_url:
+            raise Exception("مطلوب IMAGE_URL و VIDEO_URL")
+        
+        print(f"📝 الكابشن: {caption[:50]}...")
+        print(f"🎬 اسم الفيديو: {vid_name}")
+        
+        # إعداد العميل
+        print("\n🔌 جاري الاتصال بتيليجرام...", end=" ")
+        client = TelegramClient(
+            StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
+            int(os.getenv('TELEGRAM_API_ID')),
+            os.getenv('TELEGRAM_API_HASH')
+        )
+        
+        await client.start()
+        me = await client.get_me()
+        print(f"✅ متصل كـ: {me.first_name}")
+        
+        # الحصول على الكيان
         try:
+            if channel.startswith('@'):
+                entity = await client.get_entity(channel)
+            elif channel.startswith('-100'):
+                entity = await client.get_entity(int(channel))
+            elif channel.startswith('https://t.me/+'):
+                # رابط دعوة - نجرب نجيب الكيان بالرابط
+                invite_hash = channel.split('+')[-1]
+                try:
+                    entity = await client.get_entity(channel)
+                except:
+                    # لو فشل، نجرب ندخل من الرابط
+                    from telethon.tl.functions.messages import ImportChatInviteRequest
+                    try:
+                        updates = await client(ImportChatInviteRequest(invite_hash))
+                        entity = updates.chats[0]
+                    except Exception as e:
+                        raise Exception(f"تعذر الانضمام للقناة من الرابط: {e}")
+            else:
+                entity = await client.get_entity(channel)
+            print(f"📢 القناة المستهدفة: {entity.title if hasattr(entity, 'title') else channel}")
+        except Exception as e:
+            raise Exception(f"تعذر الوصول للقناة: {e}")
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
             # 1. تحميل البوستر
             print("\n" + "-"*70)
             print("📥 [1/3] جاري تحميل البوستر...")
@@ -173,30 +187,60 @@ async def main():
                 supports_streaming=True
             )
             
-            # رفع Album - الصورة زي ما هي، الفيديو زي ما هو
+            # رفع Album
             print("⏳ جاري رفع Album...")
             
-            # نستخدم send_file مع قائمة، ونخلي Telegram يختار thumbnail للفيديو تلقائياً
-            album = await client.send_file(
-                entity,
-                file=[img_path, vid_path],  # قائمة بالملفات
-                caption=caption,  # الكابشن على الصورة الأولى
-                force_document=False,  # عشان يظهروا كصورة وفيديو مش ملفات
-                attributes=[None, [video_attributes]],  # attributes للفيديو بس
-                # مفيش thumb هنا - Telegram هيختار تلقائياً من الفيديو
-            )
-            
-            print(f"✅ تم رفع Album بنجاح!")
+            try:
+                album = await client.send_file(
+                    entity,
+                    file=[img_path, vid_path],
+                    caption=caption,
+                    force_document=False,
+                    attributes=[None, [video_attributes]],
+                )
+                
+                if isinstance(album, list):
+                    print(f"✅ تم رفع Album بنجاح! ({len(album)} عناصر)")
+                else:
+                    print(f"✅ تم الرفع بنجاح!")
+                    
+            except Exception as e:
+                print(f"\n❌ خطأ في رفع Album: {e}")
+                print("🔄 جاري محاولة الرفع منفصل...")
+                
+                # لو فشل Album، نرفع منفصل
+                photo_msg = await client.send_file(
+                    entity,
+                    img_path,
+                    caption=caption,
+                    force_document=False
+                )
+                print(f"✅ تم رفع الصورة (Msg ID: {photo_msg.id})")
+                
+                video_msg = await client.send_file(
+                    entity,
+                    vid_path,
+                    attributes=[video_attributes],
+                    supports_streaming=True,
+                    force_document=False
+                )
+                print(f"✅ تم رفع الفيديو (Msg ID: {video_msg.id})")
             
             print("\n" + "="*70)
-            print("🎉 تم رفع Album بنجاح!")
-            print("📸 الصورة: على الشمال (بالأبعاد الأصلية)")
-            print("🎬 الفيديو: على اليمين (thumbnail من الفيديو نفسه)")
+            print("🎉 تم رفع المحتوى بنجاح!")
             print("="*70)
             
-        finally:
+    except Exception as e:
+        print(f"\n\n❌ خطأ: {str(e)}")
+        print("\n📋 تفاصيل الخطأ:")
+        traceback.print_exc()
+        sys.exit(1)
+    finally:
+        try:
             await client.disconnect()
             print("\n🔌 تم قطع الاتصال بتيليجرام")
+        except:
+            pass
 
 if __name__ == "__main__":
     try:
@@ -205,5 +249,6 @@ if __name__ == "__main__":
         print("\n\n⚠️ تم إيقاف السكريبت يدوياً")
         sys.exit(130)
     except Exception as e:
-        print(f"\n\n❌ خطأ: {str(e)}", file=sys.stderr)
+        print(f"\n\n❌ خطأ عام: {str(e)}")
+        traceback.print_exc()
         sys.exit(1)
