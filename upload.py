@@ -9,12 +9,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedPhoto, InputMediaUploadedDocument
-from telethon.tl.functions.messages import SendMultiMediaRequest
+from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
-from PIL import Image
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -80,39 +78,9 @@ def get_video_info(video_path):
     
     return {'width': 1280, 'height': 720, 'duration': 0}
 
-def prepare_thumbnail_for_video(image_path, output_path):
-    """
-    تحضير Thumbnail للفيديو - نفس أبعاد الصورة الأصلية
-    """
-    try:
-        print("🔧 تحضير Thumbnail للفيديو...", end=" ")
-        
-        with Image.open(image_path) as img:
-            # نحافظ على نفس الأبعاد بالظبط
-            if img.mode in ('RGBA', 'LA', 'P'):
-                background = Image.new('RGB', img.size, (0, 0, 0))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                if img.mode in ('RGBA', 'LA'):
-                    background.paste(img, mask=img.split()[-1])
-                    img = background
-                else:
-                    img = img.convert('RGB')
-            
-            # نحفظ بنفس الأبعاد
-            img.save(output_path, 'JPEG', quality=95, optimize=True)
-            
-            size_kb = os.path.getsize(output_path) / 1024
-            print(f"✅ ({img.size[0]}x{img.size[1]}, {size_kb:.1f} KB)")
-            return True
-            
-    except Exception as e:
-        print(f"❌ فشل: {e}")
-        return False
-
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album (صورة + فيديو) في نفس البوست")
+    print("🚀 سكريبت رفع Album (صورة + فيديو) - بدون تعديلات")
     print("="*70)
     
     # التحقق من المتغيرات
@@ -170,33 +138,7 @@ async def main():
             img_path = os.path.join(tmp_dir, f"poster{img_ext}")
             
             img_size = await download_file(img_url, img_path)
-            
-            # التحقق من أبعاد الصورة
-            with Image.open(img_path) as img:
-                orig_width, orig_height = img.size
-                aspect_ratio = orig_height / orig_width
-                print(f"✅ تم تحميل البوستر: {img_size:.2f} MB ({orig_width}x{orig_height}, ratio: {aspect_ratio:.2f})")
-            
-            # تحويل WebP لـ JPG لو لازم
-            if img_path.lower().endswith('.webp'):
-                try:
-                    print("🔄 تحويل WebP إلى JPG...", end=" ")
-                    jpg_path = img_path.replace('.webp', '.jpg')
-                    with Image.open(img_path) as img:
-                        if img.mode in ('RGBA', 'LA', 'P'):
-                            background = Image.new('RGB', img.size, (0, 0, 0))
-                            if img.mode == 'P':
-                                img = img.convert('RGBA')
-                            if img.mode in ('RGBA', 'LA'):
-                                background.paste(img, mask=img.split()[-1])
-                                img = background
-                            else:
-                                img = img.convert('RGB')
-                        img.save(jpg_path, 'JPEG', quality=95, optimize=True)
-                    img_path = jpg_path
-                    print("✅")
-                except Exception as e:
-                    print(f"⚠️ فشل التحويل: {e}")
+            print(f"✅ تم تحميل البوستر: {img_size:.2f} MB")
             
             # 2. تحميل الفيديو
             print("\n" + "-"*70)
@@ -218,24 +160,12 @@ async def main():
             print(f"📐 دقة الفيديو: {video_info['width']}x{video_info['height']}")
             print(f"⏱️  مدة الفيديو: {video_info['duration']} ثانية")
             
-            # تحضير Thumbnail للفيديو بنفس أبعاد الصورة
-            thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
-            if not prepare_thumbnail_for_video(img_path, thumb_path):
-                thumb_path = img_path
-            
             # 4. رفع Album (صورة + فيديو في نفس البوست)
             print("\n" + "-"*70)
-            print("📤 رفع Album (صورة على الشمال، فيديو على اليمين)...")
+            print("📤 رفع Album (صورة + فيديو) في نفس البوست...")
             print("-"*70)
             
-            # رفع الصورة أولاً (عشان نجيب الـ file_id)
-            print("⏳ جاري رفع الصورة...")
-            uploaded_photo = await client.upload_file(img_path)
-            
-            # رفع الفيديو مع الـ thumbnail
-            print("⏳ جاري رفع الفيديو...")
-            
-            # نجهز الـ attributes
+            # إعداد attributes للفيديو فقط
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
@@ -243,31 +173,25 @@ async def main():
                 supports_streaming=True
             )
             
-            # رفع الفيديو
-            uploaded_video = await client.upload_file(
-                vid_path,
-                progress_callback=lambda uploaded, total: print(f"   📥 {uploaded/1024/1024:.1f}/{total/1024/1024:.1f} MB", end="\r")
-            )
+            # رفع Album - الصورة زي ما هي، الفيديو زي ما هو
+            print("⏳ جاري رفع Album...")
             
-            print("\n⏳ جاري إرسال Album...")
-            
-            # إنشاء الـ Album باستخدام send_file مع قائمة
-            # الطريقة الصحيحة لعمل Album في Telethon
-            album_messages = await client.send_file(
+            # نستخدم send_file مع قائمة، ونخلي Telegram يختار thumbnail للفيديو تلقائياً
+            album = await client.send_file(
                 entity,
-                [img_path, vid_path],  # قائمة بالملفات
+                file=[img_path, vid_path],  # قائمة بالملفات
                 caption=caption,  # الكابشن على الصورة الأولى
-                attributes=[None, [video_attributes]],  # attributes للفيديو فقط
-                force_document=False
+                force_document=False,  # عشان يظهروا كصورة وفيديو مش ملفات
+                attributes=[None, [video_attributes]],  # attributes للفيديو بس
+                # مفيش thumb هنا - Telegram هيختار تلقائياً من الفيديو
             )
             
             print(f"✅ تم رفع Album بنجاح!")
-            print(f"📸 عدد الرسائل: {len(album_messages) if isinstance(album_messages, list) else 1}")
             
             print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
             print("📸 الصورة: على الشمال (بالأبعاد الأصلية)")
-            print("🎬 الفيديو: على اليمين (مع نفس الـ thumbnail)")
+            print("🎬 الفيديو: على اليمين (thumbnail من الفيديو نفسه)")
             print("="*70)
             
         finally:
