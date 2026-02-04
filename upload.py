@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import DocumentAttributeVideo
+from PIL import Image
 import requests
 import ssl
 import urllib3
@@ -79,9 +80,60 @@ def get_video_info(video_path):
     
     return {'width': 1280, 'height': 720, 'duration': 0}
 
+def convert_image_to_jpg(image_path, output_path):
+    """تحويل أي صورة لـ JPEG عشان تظهر صح في Telegram"""
+    try:
+        print("🔄 تحويل الصورة لـ JPEG...", end=" ")
+        with Image.open(image_path) as img:
+            # تحويل لـ RGB لو لازم
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (0, 0, 0))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                if img.mode in ('RGBA', 'LA'):
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
+                else:
+                    img = img.convert('RGB')
+            
+            # حفظ كـ JPEG
+            img.save(output_path, 'JPEG', quality=95, optimize=True)
+        
+        size_kb = os.path.getsize(output_path) / 1024
+        print(f"✅ ({size_kb:.1f} KB)")
+        return True
+    except Exception as e:
+        print(f"❌ فشل: {e}")
+        return False
+
+def extract_video_thumbnail(video_path, output_path, time_sec=5):
+    """استخراج frame من الفيديو كـ thumbnail"""
+    try:
+        print(f"🎬 استخراج thumbnail من الفيديو (عند {time_sec} ثانية)...", end=" ")
+        
+        cmd = [
+            'ffmpeg', '-ss', str(time_sec), '-i', video_path,
+            '-vframes', '1', '-q:v', '2',
+            '-y', output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        
+        if result.returncode == 0 and os.path.exists(output_path):
+            size_kb = os.path.getsize(output_path) / 1024
+            print(f"✅ ({size_kb:.1f} KB)")
+            return True
+        else:
+            print(f"⚠️ ffmpeg فشل")
+            return False
+            
+    except Exception as e:
+        print(f"❌ فشل: {e}")
+        return False
+
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album (صورة + فيديو) - بدون تعديلات")
+    print("🚀 سكريبت رفع Album (صورة + فيديو) - النسخة النهائية")
     print("="*70)
     
     try:
@@ -122,18 +174,13 @@ async def main():
             elif channel.startswith('-100'):
                 entity = await client.get_entity(int(channel))
             elif channel.startswith('https://t.me/+'):
-                # رابط دعوة - نجرب نجيب الكيان بالرابط
                 invite_hash = channel.split('+')[-1]
                 try:
                     entity = await client.get_entity(channel)
                 except:
-                    # لو فشل، نجرب ندخل من الرابط
                     from telethon.tl.functions.messages import ImportChatInviteRequest
-                    try:
-                        updates = await client(ImportChatInviteRequest(invite_hash))
-                        entity = updates.chats[0]
-                    except Exception as e:
-                        raise Exception(f"تعذر الانضمام للقناة من الرابط: {e}")
+                    updates = await client(ImportChatInviteRequest(invite_hash))
+                    entity = updates.chats[0]
             else:
                 entity = await client.get_entity(channel)
             print(f"📢 القناة المستهدفة: {entity.title if hasattr(entity, 'title') else channel}")
@@ -143,20 +190,26 @@ async def main():
         with tempfile.TemporaryDirectory() as tmp_dir:
             # 1. تحميل البوستر
             print("\n" + "-"*70)
-            print("📥 [1/3] جاري تحميل البوستر...")
+            print("📥 [1/4] جاري تحميل البوستر...")
             print("-"*70)
             
             img_ext = os.path.splitext(urlparse(img_url).path)[1].lower()
             if not img_ext or len(img_ext) > 5:
                 img_ext = '.jpg'
-            img_path = os.path.join(tmp_dir, f"poster{img_ext}")
             
-            img_size = await download_file(img_url, img_path)
-            print(f"✅ تم تحميل البوستر: {img_size:.2f} MB")
+            raw_img_path = os.path.join(tmp_dir, f"raw_poster{img_ext}")
+            await download_file(img_url, raw_img_path)
+            
+            # تحويل لـ JPEG (مهم جداً عشان تظهر كصورة مش ملف)
+            img_path = os.path.join(tmp_dir, "poster.jpg")
+            if not convert_image_to_jpg(raw_img_path, img_path):
+                img_path = raw_img_path  # لو فشل التحويل، استخدم الأصلية
+            
+            print(f"✅ الصورة جاهزة: {img_path}")
             
             # 2. تحميل الفيديو
             print("\n" + "-"*70)
-            print(f"📥 [2/3] جاري تحميل الفيديو ({vid_name})...")
+            print(f"📥 [2/4] جاري تحميل الفيديو ({vid_name})...")
             print("-"*70)
             
             vid_name_clean = sanitize_filename(vid_name)
@@ -165,21 +218,28 @@ async def main():
             vid_size = await download_file(vid_url, vid_path)
             print(f"✅ تم تحميل الفيديو: {vid_size:.2f} MB")
             
-            # 3. معلومات الفيديو
+            # 3. معلومات الفيديو واستخراج thumbnail
             print("\n" + "-"*70)
-            print("🔍 [3/3] جاري استخراج معلومات الفيديو...")
+            print("🔍 [3/4] جاري استخراج معلومات الفيديو وthumbnail...")
             print("-"*70)
             
             video_info = get_video_info(vid_path)
             print(f"📐 دقة الفيديو: {video_info['width']}x{video_info['height']}")
             print(f"⏱️  مدة الفيديو: {video_info['duration']} ثانية")
             
+            # استخراج thumbnail من الفيديو نفسه (أفضل حاجة)
+            video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
+            if not extract_video_thumbnail(vid_path, video_thumb_path, time_sec=10):
+                # لو فشل، نستخدم الصورة
+                print("⚠️ استخدام الصورة كـ thumbnail للفيديو")
+                video_thumb_path = img_path
+            
             # 4. رفع Album (صورة + فيديو في نفس البوست)
             print("\n" + "-"*70)
-            print("📤 رفع Album (صورة + فيديو) في نفس البوست...")
+            print("📤 [4/4] رفع Album (صورة + فيديو)...")
             print("-"*70)
             
-            # إعداد attributes للفيديو فقط
+            # إعداد attributes للفيديو
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
@@ -187,47 +247,31 @@ async def main():
                 supports_streaming=True
             )
             
-            # رفع Album
             print("⏳ جاري رفع Album...")
             
-            try:
-                album = await client.send_file(
-                    entity,
-                    file=[img_path, vid_path],
-                    caption=caption,
-                    force_document=False,
-                    attributes=[None, [video_attributes]],
-                )
-                
-                if isinstance(album, list):
-                    print(f"✅ تم رفع Album بنجاح! ({len(album)} عناصر)")
-                else:
-                    print(f"✅ تم الرفع بنجاح!")
-                    
-            except Exception as e:
-                print(f"\n❌ خطأ في رفع Album: {e}")
-                print("🔄 جاري محاولة الرفع منفصل...")
-                
-                # لو فشل Album، نرفع منفصل
-                photo_msg = await client.send_file(
-                    entity,
-                    img_path,
-                    caption=caption,
-                    force_document=False
-                )
-                print(f"✅ تم رفع الصورة (Msg ID: {photo_msg.id})")
-                
-                video_msg = await client.send_file(
-                    entity,
-                    vid_path,
-                    attributes=[video_attributes],
-                    supports_streaming=True,
-                    force_document=False
-                )
-                print(f"✅ تم رفع الفيديو (Msg ID: {video_msg.id})")
+            # الطريقة الصحيحة لرفع Album في Telethon
+            # نستخدم send_file مع قائمة ونحدد clear_draft=False
+            album = await client.send_file(
+                entity,
+                file=[img_path, vid_path],  # قائمة بالملفات
+                caption=caption,  # الكابشن على أول عنصر (الصورة)
+                force_document=False,  # عشان يظهروا كصورة وفيديو
+                clear_draft=False,
+                attributes=[None, [video_attributes]],  # attributes للفيديو بس
+                thumb=video_thumb_path,  # thumbnail للفيديو
+            )
+            
+            if isinstance(album, list):
+                print(f"✅ تم رفع Album بنجاح! ({len(album)} عناصر في نفس البوست)")
+                for i, msg in enumerate(album):
+                    print(f"   - عنصر {i+1}: Msg ID {msg.id}")
+            else:
+                print(f"✅ تم الرفع بنجاح! Msg ID: {album.id}")
             
             print("\n" + "="*70)
-            print("🎉 تم رفع المحتوى بنجاح!")
+            print("🎉 تم رفع Album بنجاح!")
+            print("📸 الصورة: على الشمال (JPEG)")
+            print("🎬 الفيديو: على اليمين (مع thumbnail من الفيديو)")
             print("="*70)
             
     except Exception as e:
