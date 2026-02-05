@@ -10,7 +10,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeVideo
+from telethon.tl.types import DocumentAttributeVideo, InputMediaPhotoExternal, InputMediaDocumentExternal
+from telethon.tl.functions.messages import SendMultiMediaRequest
+from telethon.tl.types import InputSingleMedia, InputMediaUploadedPhoto, InputMediaUploadedDocument
 from PIL import Image
 import requests
 import ssl
@@ -131,7 +133,7 @@ def extract_video_thumbnail(video_path, output_path, time_sec=5):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album - النسخة النهائية")
+    print("🚀 سكريبت رفع Album - فيديو للتشغيل المباشر")
     print("="*70)
     
     try:
@@ -227,12 +229,28 @@ async def main():
                 print("⚠️ استخدام الصورة كـ thumbnail")
                 video_thumb_path = img_path
             
-            # 4. رفع Album باستخدام send_file الصحيح
+            # 4. رفع Album باستخدام SendMultiMediaRequest
             print("\n" + "-"*70)
             print("📤 [4/4] رفع Album...")
             print("-"*70)
             
-            # إعداد attributes للفيديو
+            # رفع الصورة
+            print("⏳ رفع الصورة...")
+            uploaded_photo = await client.upload_file(img_path)
+            
+            # رفع الفيديو
+            print("⏳ رفع الفيديو...")
+            uploaded_video = await client.upload_file(vid_path)
+            
+            # رفع thumbnail
+            print("⏳ رفع thumbnail...")
+            uploaded_thumb = await client.upload_file(video_thumb_path)
+            
+            # إعداد الـ media
+            photo_media = InputMediaUploadedPhoto(
+                file=uploaded_photo
+            )
+            
             video_attributes = DocumentAttributeVideo(
                 duration=video_info['duration'],
                 w=video_info['width'],
@@ -240,27 +258,33 @@ async def main():
                 supports_streaming=True
             )
             
-            print("⏳ جاري رفع Album...")
-            
-            # الطريقة الصحيحة لرفع Album في Telethon
-            # نستخدم send_file مع قائمة من الملفات
-            album_messages = await client.send_file(
-                entity,
-                file=[img_path, vid_path],
-                caption=caption,
-                force_document=False,
-                attributes=[None, [video_attributes]],
-                thumb=video_thumb_path,  # thumbnail للفيديو
-                parse_mode='html',
+            video_media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[video_attributes],
+                thumb=uploaded_thumb
             )
             
-            if isinstance(album_messages, list):
-                print(f"✅ تم رفع Album بنجاح! ({len(album_messages)} عناصر)")
-                for i, msg in enumerate(album_messages):
-                    msg_type = "صورة" if i == 0 else "فيديو"
-                    print(f"   - {msg_type}: Msg ID {msg.id}")
-            else:
-                print(f"✅ تم الرفع بنجاح! Msg ID: {album_messages.id}")
+            # إرسال Album
+            print("⏳ إرسال Album...")
+            
+            media_list = [
+                InputSingleMedia(
+                    media=photo_media,
+                    message=caption
+                ),
+                InputSingleMedia(
+                    media=video_media,
+                    message=''
+                )
+            ]
+            
+            result = await client(SendMultiMediaRequest(
+                peer=entity,
+                multi_media=media_list
+            ))
+            
+            print(f"✅ تم رفع Album بنجاح!")
             
             print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
