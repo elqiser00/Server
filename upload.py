@@ -131,7 +131,7 @@ def extract_video_thumbnail(video_path, output_path, time_sec=5):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album - فيديو للتشغيل المباشر")
+    print("🚀 سكريبت رفع Album - صورة على الشمال، فيديو على اليمين")
     print("="*70)
     
     try:
@@ -227,7 +227,7 @@ async def main():
                 print("⚠️ استخدام الصورة كـ thumbnail")
                 video_thumb_path = img_path
             
-            # 4. رفع Album باستخدام send_file مع album=True
+            # 4. رفع Album
             print("\n" + "-"*70)
             print("📤 [4/4] رفع Album...")
             print("-"*70)
@@ -242,32 +242,33 @@ async def main():
             
             print("⏳ جاري رفع Album...")
             
-            # الطريقة الصحيحة لرفع Album في Telethon مع فيديو للتشغيل المباشر
-            # نستخدم send_file مع file= قائمة ونحدد attributes لكل عنصر
-            album_messages = await client.send_file(
+            # رفع الصورة أولاً (Album)
+            print("   📤 رفع الصورة...")
+            photo_msg = await client.send_file(
                 entity,
-                file=[img_path, vid_path],  # قائمة بالملفات = Album
-                caption=caption,  # الكابشن على الصورة الأولى
-                force_document=False,  # عشان يظهروا كصورة وفيديو مش ملفات
-                attributes=[
-                    None,  # الصورة مفيش attributes
-                    [video_attributes]  # الفيديو مع attributes
-                ],
-                thumb=video_thumb_path,  # thumbnail للفيديو
+                img_path,
+                caption=caption,  # الكابشن على الصورة
+                force_document=False
             )
+            print(f"   ✅ تم رفع الصورة (ID: {photo_msg.id})")
             
-            if isinstance(album_messages, list):
-                print(f"✅ تم رفع Album بنجاح! ({len(album_messages)} عناصر)")
-                for i, msg in enumerate(album_messages):
-                    msg_type = "صورة" if i == 0 else "فيديو"
-                    print(f"   - {msg_type}: Msg ID {msg.id}")
-            else:
-                print(f"✅ تم الرفع بنجاح! Msg ID: {album_messages.id}")
+            # رفع الفيديو كـ رد على الصورة (Album)
+            print("   📤 رفع الفيديو...")
+            video_msg = await client.send_file(
+                entity,
+                vid_path,
+                reply_to=photo_msg.id,  # رد على الصورة = Album
+                attributes=[video_attributes],
+                thumb=video_thumb_path,
+                supports_streaming=True,
+                force_document=False
+            )
+            print(f"   ✅ تم رفع الفيديو (ID: {video_msg.id})")
             
             print("\n" + "="*70)
             print("🎉 تم رفع Album بنجاح!")
-            print("📸 الصورة: على الشمال")
-            print("🎬 الفيديو: على اليمين (streaming + thumbnail)")
+            print("📸 الصورة: على الشمال (أو فوق لو كبيرة)")
+            print("🎬 الفيديو: على اليمين (أو تحت لو الصورة كبيرة)")
             print("="*70)
             
     except Exception as e:
