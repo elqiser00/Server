@@ -20,7 +20,6 @@ from PIL import Image
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 MAX_VIDEO_SIZE_MB = 1999.0
-# ✅ الفيديو يعتبر "عريض" لو النسبة أكبر من 1.5
 WIDE_SCREEN_RATIO = 1.5
 
 def sanitize_filename(filename):
@@ -87,11 +86,10 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
             raise Exception(f"فشل التنزيل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو كاملة"""
     try:
         cmd = [
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height,duration,display_aspect_ratio',
+            '-show_entries', 'stream=width,height,duration',
             '-show_entries', 'format=duration',
             '-of', 'json', video_path
         ]
@@ -106,7 +104,6 @@ def get_video_info(video_path):
             if not duration:
                 duration = data.get('format', {}).get('duration', 0)
             
-            # ✅ حساب نسبة العرض للطول
             ratio = width / height if height > 0 else 1.77
             
             return {
@@ -114,12 +111,11 @@ def get_video_info(video_path):
                 'height': height,
                 'duration': int(float(duration)) if duration else 0,
                 'ratio': ratio,
-                'is_widescreen': ratio > WIDE_SCREEN_RATIO  # ✅ هل هو عريض؟
+                'is_widescreen': ratio > WIDE_SCREEN_RATIO
             }
     except Exception as e:
-        print(f"⚠️ فشل استخراج معلومات الفيديو: {e}")
+        pass
     
-    # ✅ قيم افتراضية (عريض)
     return {'width': 1920, 'height': 1080, 'duration': 0, 'ratio': 1.77, 'is_widescreen': True}
 
 async def resolve_channel(client, channel_input):
@@ -149,9 +145,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى - ذكي حسب أبعاد الفيديو")
-    print("="*70)
-    print("✅ فيديو عريض: صورة فوق | ✅ فيديو عادي: صورة على اليسار")
+    print("🚀 سكريبت رفع المحتوى - Album ذكي")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -210,16 +204,15 @@ async def main():
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(" ✅")
                 
-                # ✅ استخراج معلومات الفيديو وتحديد نوعه
                 print("جاري تحليل أبعاد الفيديو...", end='', flush=True)
                 video_info = get_video_info(video_path)
                 print(" ✅")
                 print(f"   الأبعاد: {video_info['width']}x{video_info['height']} | النسبة: {video_info['ratio']:.2f}")
                 
                 if video_info['is_widescreen']:
-                    print("   🎬 الفيديو عريض: الصورة فوق + الفيديو تحت")
+                    print("   🎬 الفيديو عريض: Album (صورة فوق + فيديو تحت)")
                 else:
-                    print("   📺 الفيديو عادي: الصورة على اليسار + الفيديو على اليمين")
+                    print("   📺 الفيديو عادي: Album (صورة يسار + فيديو يمين)")
                 
                 print(f"\n✅ جاهز للرفع")
             
@@ -263,61 +256,45 @@ async def main():
             entity = await resolve_channel(client, channel)
             
             if mode == 'movie':
-                # ✅ تحديد طريقة الرفع حسب نوع الفيديو
+                # ✅ في الحالتين: Album (مع بعض)
+                print("جاري رفع Album...", end='', flush=True)
+                
+                # ✅ ترتيب الملفات حسب نوع الفيديو
                 if video_info['is_widescreen']:
-                    # 🎬 الفيديو عريض: صورة فوق، فيديو تحت (ردود)
-                    print("جاري رفع: صورة فوق + فيديو تحت...", end='', flush=True)
-                    
-                    # رفع الصورة الأولى (فوق)
-                    photo_msg = await client.send_file(
-                        entity,
-                        image_path,
-                        caption=caption,
-                        parse_mode='html'
-                    )
-                    
-                    # رفع الفيديو رد على الصورة (تحت)
-                    video_msg = await client.send_file(
-                        entity,
-                        video_path,
-                        reply_to=photo_msg.id,
-                        parse_mode='html',
-                        supports_streaming=True,
-                        force_document=False,
-                        attributes=[
-                            DocumentAttributeVideo(
-                                duration=video_info['duration'],
-                                w=video_info['width'],
-                                h=video_info['height'],
-                                supports_streaming=True
-                            )
-                        ]
-                    )
-                    print(" ✅")
-                    print("🎉 الشكل: صورة فوق + فيديو تحت (عريض)")
-                    
+                    # 🎬 عريض: صورة فوق، فيديو تحت
+                    # الترتيب: صورة أولاً = فوق، فيديو ثانياً = تحت
+                    files = [image_path, video_path]
+                    print(" (صورة فوق + فيديو تحت)...", end='', flush=True)
                 else:
-                    # 📺 الفيديو عادي: صورة على اليسار، فيديو على اليمين (Album)
-                    print("جاري رفع: صورة على اليسار + فيديو على اليمين...", end='', flush=True)
-                    
-                    await client.send_file(
-                        entity,
-                        file=[image_path, video_path],
-                        caption=caption,
-                        parse_mode='html',
-                        force_document=False,
-                        supports_streaming=True,
-                        attributes=[
-                            DocumentAttributeVideo(
-                                duration=video_info['duration'],
-                                w=video_info['width'],
-                                h=video_info['height'],
-                                supports_streaming=True
-                            )
-                        ]
-                    )
-                    print(" ✅")
-                    print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (عادي)")
+                    # 📺 عادي: صورة يسار، فيديو يمين
+                    # الترتيب: صورة أولاً = يسار، فيديو ثانياً = يمين
+                    files = [image_path, video_path]
+                    print(" (صورة يسار + فيديو يمين)...", end='', flush=True)
+                
+                # ✅ رفع Album
+                await client.send_file(
+                    entity,
+                    file=files,
+                    caption=caption,
+                    parse_mode='html',
+                    force_document=False,
+                    supports_streaming=True,
+                    attributes=[
+                        DocumentAttributeVideo(
+                            duration=video_info['duration'],
+                            w=video_info['width'],
+                            h=video_info['height'],
+                            supports_streaming=True
+                        )
+                    ]
+                )
+                
+                print(" ✅")
+                
+                if video_info['is_widescreen']:
+                    print("🎉 الشكل: صورة فوق + فيديو تحت (Album)")
+                else:
+                    print("🎉 الشكل: صورة يسار + فيديو يمين (Album)")
             
             else:  # series
                 print("جاري رفع ملفات المسلسلات", end='', flush=True)
