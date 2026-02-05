@@ -11,14 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import (
-    DocumentAttributeVideo,
-    InputMediaUploadedPhoto,
-    InputMediaUploadedDocument,
-    InputSingleMedia
-)
-from telethon.tl.functions.messages import SendMultiMediaRequest
-from telethon.utils import get_input_peer
+from telethon.tl.types import DocumentAttributeVideo
 import requests
 import ssl
 import urllib3
@@ -146,7 +139,7 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - Album نهائي")
+    print("🚀 سكريبت رفع المحتوى على تيليجرام - Album بـ send_file")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -249,23 +242,24 @@ async def main():
             
             print(f"\n📤 جاري الرفع على القناة: {channel}")
             entity = await resolve_channel(client, channel)
-            input_peer = get_input_peer(entity)
             
             if mode == 'movie':
                 print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
                 
-                # ✅ رفع الملفات
-                uploaded_photo = await client.upload_file(image_path)
-                uploaded_video = await client.upload_file(video_path)
+                # ✅ استخدام send_file مع album=True
+                # نرفع الصورة والفيديو كـ Album
+                # الصورة تكون صورة عادية، الفيديو يكون فيديو
                 
-                # ✅ إنشاء InputMedia للصورة
-                photo_media = InputMediaUploadedPhoto(uploaded_photo)
+                from telethon.tl.types import InputMediaPhotoExternal, InputMediaDocumentExternal
                 
-                # ✅ إنشاء InputMedia للفيديو بدون thumb
-                # Telegram هيستخرج الـ thumbnail تلقائياً
-                video_media = InputMediaUploadedDocument(
-                    file=uploaded_video,
-                    mime_type='video/mp4',
+                # ✅ الحل: نرفعهم كـ media group (Album)
+                await client.send_file(
+                    entity,
+                    file=[image_path, video_path],
+                    caption=caption,
+                    parse_mode='html',
+                    force_document=False,
+                    supports_streaming=True,
                     attributes=[
                         DocumentAttributeVideo(
                             duration=video_info['duration'],
@@ -273,30 +267,8 @@ async def main():
                             h=video_info['height'],
                             supports_streaming=True
                         )
-                    ],
-                    # ❌ لا thumb هنا - Telegram يستخرجه تلقائياً
-                    force_file=False
+                    ]
                 )
-                
-                # ✅ إنشاء قائمة Album
-                media_list = [
-                    InputSingleMedia(
-                        media=photo_media,
-                        message=caption,
-                        entities=[]
-                    ),
-                    InputSingleMedia(
-                        media=video_media,
-                        message='',
-                        entities=[]
-                    )
-                ]
-                
-                # ✅ إرسال Album
-                await client(SendMultiMediaRequest(
-                    peer=input_peer,
-                    multi_media=media_list
-                ))
                 
                 print(" ✅")
                 print("\n✅ تم الرفع بنجاح!")
