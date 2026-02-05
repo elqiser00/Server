@@ -10,26 +10,29 @@ from pathlib import Path
 from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import (
+    DocumentAttributeVideo, 
+    DocumentAttributeFilename
+)
 import requests
 import ssl
 import urllib3
 from PIL import Image
 
-# تجاوز تحذيرات SSL تلقائياً
+# تجاوز تحذيرات SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 MAX_VIDEO_SIZE_MB = 1999.0
 MAX_VIDEO_SIZE_BYTES = int(MAX_VIDEO_SIZE_MB * 1024 * 1024)
 
 def sanitize_filename(filename):
-    """تنقية اسم الملف مع الحفاظ على النقاط المهمة"""
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
 
 async def validate_and_download_file(url, save_dir, base_name, is_image=False):
     """تنزيل الملف مع تخطي SSL تلقائياً"""
     url = url.strip()
     if not url:
-        raise Exception("رابط فارغ بعد التنقية!")
+        raise Exception("رابط فارغ!")
     
     for attempt in range(2):
         try:
@@ -92,28 +95,82 @@ async def validate_and_download_file(url, save_dir, base_name, is_image=False):
                 Path(filepath).unlink(missing_ok=True)
             raise Exception(f"فشل التنزيل: {str(e)}")
 
-def extract_video_thumbnail(video_path, output_path):
-    """استخراج Thumbnail من الفيديو باستخدام FFmpeg"""
+def extract_video_info(video_path):
+    """استخراج Thumbnail + المدة + الأبعاد من الفيديو"""
     try:
-        cmd = [
+        # استخراج Thumbnail من ثانية 5 (أحسن من الأولى)
+        thumb_path = video_path + "_thumb.jpg"
+        cmd_thumb = [
             'ffmpeg',
             '-i', video_path,
-            '-ss', '00:00:01',
+            '-ss', '00:00:05',        # ثانية 5 عشان تكون مش سودة
             '-vframes', '1',
-            '-q:v', '2',
+            '-q:v', '2',              # جودة عالية
             '-y',
-            output_path
+            thumb_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd_thumb, capture_output=True, text=True, timeout=30)
+        thumb_success = result.returncode == 0 and os.path.exists(thumb_path)
         
-        if result.returncode == 0 and os.path.exists(output_path):
-            return True
-        else:
-            return False
+        # استخراج المدة والأبعاد
+        cmd_info = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height,duration',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1'
+        ]
+        
+        # نجرب نجيب المدة
+        duration = 0
+        width = 1280
+        height = 720
+        
+        try:
+            result = subprocess.run(
+                cmd_info + [video_path],
+                capture_output=True, text=True, timeout=10
+            )
             
+            for line in result.stdout.split('\n'):
+                if 'duration=' in line:
+                    try:
+                        duration = float(line.split('=')[1])
+                    except:
+                        pass
+                elif 'width=' in line:
+                    try:
+                        width = int(line.split('=')[1])
+                    except:
+                        pass
+                elif 'height=' in line:
+                    try:
+                        height = int(line.split('=')[1])
+                    except:
+                        pass
+        except:
+            pass
+        
+        # لو مفيش ثمبنيل، نرجع None
+        if not thumb_success:
+            thumb_path = None
+            
+        return {
+            'thumb_path': thumb_path,
+            'duration': int(duration),
+            'width': width,
+            'height': height
+        }
+        
     except Exception as e:
-        return False
+        return {
+            'thumb_path': None,
+            'duration': 0,
+            'width': 1280,
+            'height': 720
+        }
 
 async def resolve_channel(client, channel_input):
     """معالجة ذكية لجميع أنواع روابط القنوات"""
@@ -143,9 +200,9 @@ async def resolve_channel(client, channel_input):
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع المحتوى على تيليجرام - إصدار Album الحقيقي")
+    print("🚀 سكريبت رفع الفيديو على تيليجرام - مع Thumbnail ومدة الفيديو")
     print("="*70)
-    print("✅ صورة + فيديو جنب بعض | ✅ فيديو قابل للتشغيل")
+    print("✅ فيديو واحد ببوستر | ✅ مدة الفيديو ظاهرة | ✅ قابل للتشغيل")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -185,40 +242,69 @@ async def main():
                 
                 print("\n🎬 جاري تنزيل الملفات...")
                 
-                # تنزيل الصورة (البوستر)
-                print("جاري تحميل البوستر", end='', flush=True)
-                image_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'poster', is_image=True)
-                print(" ✅")
-                print(f"   تم التحميل: poster (الحجم: {img_size:.2f}MB)")
+                # تنزيل البوستر (للاستخدام كـ Thumb)
+                print("جاري تحميل البوستر...", end='', flush=True)
+                poster_path, img_size, img_speed = await validate_and_download_file(img_url, tmp_dir, 'poster', is_image=True)
+                print(f" ✅ ({img_size:.2f}MB)")
                 
-                # تحويل WebP إلى JPG
-                if image_path.lower().endswith('.webp'):
+                # تحويل WebP إلى JPG لو لازم
+                if poster_path.lower().endswith('.webp'):
                     try:
-                        jpg_path = str(Path(image_path).with_suffix('.jpg'))
-                        img = Image.open(image_path).convert('RGB')
+                        jpg_path = str(Path(poster_path).with_suffix('.jpg'))
+                        img = Image.open(poster_path).convert('RGB')
                         img.save(jpg_path, 'JPEG', quality=95)
-                        image_path = jpg_path
+                        poster_path = jpg_path
                         print(f"   تم تحويل WebP إلى JPG")
-                    except Exception as e:
+                    except:
                         pass
                 
                 # تنزيل الفيديو
-                print("جاري تحميل الفيديو", end='', flush=True)
+                print("جاري تحميل الفيديو...", end='', flush=True)
                 video_path, vid_size, vid_speed = await validate_and_download_file(vid_url, tmp_dir, vid_name, is_image=False)
+                print(f" ✅ ({vid_size:.2f}MB)")
+                
+                # استخراج معلومات الفيديو (Thumbnail + مدة + أبعاد)
+                print("جاري تحليل الفيديو...", end='', flush=True)
+                video_info = extract_video_info(video_path)
+                
+                # نستخدم البوستر كـ Thumb للفيديو
+                thumb_to_use = poster_path if os.path.exists(poster_path) else video_info['thumb_path']
+                print(f" ✅ (المدة: {video_info['duration']} ثانية)")
+                
+                print(f"\n📤 جاري الرفع على القناة: {channel}")
+                entity = await resolve_channel(client, channel)
+                
+                print("جاري رفع الفيديو مع البوستر...", end='', flush=True)
+                
+                # ✅ الحل الصحيح: رفع فيديو واحد بـ attributes
+                # نستخدم thumb=poster_path عشان يظهر البوستر كخلفية
+                # ونضيف DocumentAttributeVideo عشان تظهر المدة والأبعاد
+                
+                attributes = [
+                    DocumentAttributeVideo(
+                        duration=video_info['duration'],
+                        w=video_info['width'],
+                        h=video_info['height'],
+                        supports_streaming=True
+                    ),
+                    DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
+                ]
+                
+                # ✅ الرفع: فيديو واحد بـ thumb = البوستر
+                await client.send_file(
+                    entity,
+                    file=video_path,
+                    caption=caption,
+                    parse_mode='html',
+                    thumb=thumb_to_use,           # ✅ البوستر هيظهر كخلفية
+                    attributes=attributes,        # ✅ المدة والأبعاد
+                    supports_streaming=True,      # ✅ قابل للتشغيل
+                    force_document=False          # ✅ يظهر كـ فيديو مش ملف
+                )
+                
                 print(" ✅")
-                print(f"   تم التحميل: {Path(video_path).name} (الحجم: {vid_size:.2f}MB)")
-                
-                # استخراج Thumbnail من الفيديو
-                print("جاري استخراج Thumbnail من الفيديو...", end='', flush=True)
-                video_thumb_path = os.path.join(tmp_dir, "video_thumb.jpg")
-                
-                if extract_video_thumbnail(video_path, video_thumb_path):
-                    print(" ✅")
-                else:
-                    print(" ⚠️")
-                    video_thumb_path = image_path
-                
-                print(f"\n✅ جاهز للرفع")
+                print("\n✅ تم الرفع بنجاح!")
+                print("🎉 الشكل: فيديو واحد ببوستر + مدة ظاهرة + قابل للتشغيل")
             
             else:  # series
                 try:
@@ -235,6 +321,8 @@ async def main():
                     series = series[:10]
                 
                 media_files = []
+                thumbs = []
+                
                 for i, item in enumerate(series, 1):
                     if not isinstance(item, dict) or 'url' not in item:
                         continue
@@ -246,61 +334,55 @@ async def main():
                         continue
                     
                     try:
-                        print(f"جاري تحميل الحلقة {i}", end='', flush=True)
+                        print(f"جاري تحميل الحلقة {i}...", end='', flush=True)
                         file_path, file_size, file_speed = await validate_and_download_file(url, tmp_dir, name, is_image=False)
-                        print(" ✅")
-                        media_files.append(file_path)
+                        
+                        # استخراج معلومات كل فيديو
+                        vid_info = extract_video_info(file_path)
+                        
+                        # نجهز attributes لكل فيديو
+                        attrs = [
+                            DocumentAttributeVideo(
+                                duration=vid_info['duration'],
+                                w=vid_info['width'],
+                                h=vid_info['height'],
+                                supports_streaming=True
+                            ),
+                            DocumentAttributeFilename(file_name=f"{name}.mp4")
+                        ]
+                        
+                        media_files.append((file_path, attrs, vid_info['thumb_path']))
+                        print(f" ✅ ({file_size:.2f}MB)")
                     except Exception as e:
                         print(f" ❌")
-                        if not media_files:
-                            raise Exception("فشل جميع الملفات")
-                        break
-            
-            print(f"\n📤 جاري الرفع على القناة: {channel}")
-            entity = await resolve_channel(client, channel)
-            
-            if mode == 'movie':
-                print("جاري رفع Album (صورة + فيديو جنب بعض)...", end='', flush=True)
+                        continue
                 
-                # ✅ الحل النهائي: استخدام album=True
-                # رفع الصورة والفيديو كـ Album حقيقي
+                if not media_files:
+                    raise Exception("فشل تحميل جميع الملفات")
                 
-                # الطريقة: نرفعهم كـ قائمة مع album=True
-                # الصورة تكون صورة عادية (InputMediaPhoto)
-                # الفيديو يكون فيديو (InputMediaDocument) مع supports_streaming
+                print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
+                entity = await resolve_channel(client, channel)
                 
-                from telethon.tl.types import InputMediaPhotoExternal, InputMediaDocumentExternal
-                
-                # رفع الصورة والفيديو كـ Album
-                # نستخدم send_file مع album=True显式
+                # رفع المسلسلات كـ Album (كل فيديو بـ thumb)
+                files_to_send = []
+                for file_path, attrs, thumb in media_files:
+                    files_to_send.append({
+                        'file': file_path,
+                        'thumb': thumb,
+                        'attributes': attrs
+                    })
                 
                 await client.send_file(
                     entity,
-                    file=[image_path, video_path],
-                    caption=caption,
-                    parse_mode='html',
-                    album=True,                  # ✅ Album حقيقي (جنب بعض)
-                    force_document=False,        # فيديو كـ فيديو
-                    supports_streaming=True,     # قابل للتشغيل
-                    thumb=video_thumb_path       # Thumbnail للفيديو
-                )
-                
-                print(" ✅")
-                print("\n✅ تم الرفع بنجاح!")
-                print("🎉 الشكل: صورة على اليسار + فيديو على اليمين (Album)")
-            
-            else:  # series
-                print("جاري رفع ملفات المسلسلات", end='', flush=True)
-                await client.send_file(
-                    entity,
-                    media_files,
+                    files_to_send,
                     caption=caption,
                     parse_mode='html',
                     supports_streaming=True,
                     force_document=False
                 )
+                
                 print(" ✅")
-                print("\n✅ تم الرفع بنجاح!")
+                print(f"\n✅ تم رفع {len(media_files)} حلقات بنجاح!")
             
             print("\n" + "="*70)
             print("🎉 تمت العملية بنجاح!")
