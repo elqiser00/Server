@@ -266,16 +266,15 @@ async def main():
                 print("رفع الصورة...", end='', flush=True)
                 img_file = await client.upload_file(img_path)
                 
-                # نحاول نخلي الصورة تظهر كـ photo عادي (مش document)
+                # ✅ InputMediaUploadedPhoto مالهوش message parameter
                 input_photo = InputMediaUploadedPhoto(
-                    file=img_file,
-                    message=caption,  # الكابشن هنا
-                    entities=None
+                    file=img_file
                 )
                 
+                # ✅ الكابشن بيكون في InputSingleMedia
                 media_list.append(InputSingleMedia(
                     media=input_photo,
-                    message=caption,
+                    message=caption,  # الكابشن هنا
                     entities=None
                 ))
                 print(" ✅")
@@ -300,18 +299,18 @@ async def main():
                     DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
                 ]
                 
+                # ✅ InputMediaUploadedDocument مالهوش message parameter
                 input_video = InputMediaUploadedDocument(
                     file=vid_file,
                     mime_type='video/mp4',
                     attributes=vid_attributes,
-                    thumb=thumb,
-                    message='',  # مفيش كابشن هنا
-                    entities=None
+                    thumb=thumb
                 )
                 
+                # ✅ الكابشن فاضي للفيديو
                 media_list.append(InputSingleMedia(
                     media=input_video,
-                    message='',
+                    message='',  # مفيش كابشن هنا
                     entities=None
                 ))
                 print(" ✅")
@@ -394,9 +393,7 @@ async def main():
                         file=vid_file,
                         mime_type='video/mp4',
                         attributes=vid_attributes,
-                        thumb=thumb,
-                        message=caption if i == 0 else '',
-                        entities=None
+                        thumb=thumb
                     )
                     
                     media_list.append(InputSingleMedia(
