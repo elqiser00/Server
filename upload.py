@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import (
-    InputMediaUploadedPhoto,
     InputMediaUploadedDocument,
     InputSingleMedia,
     DocumentAttributeVideo,
@@ -145,41 +144,33 @@ async def resolve_channel(client, channel_input):
     
     # لو فيه + يبقى رابط دعوة
     if '+' in channel_input:
-        # نحاول نجيب الـ hash بعد الـ +
         parts = channel_input.split('+')
         if len(parts) >= 2:
             invite_hash = parts[-1].split('?')[0].split('/')[0].strip()
             try:
-                # نستخدم CheckChatInvite عشان نجيب معلومات الدعوة
                 from telethon.tl.functions.messages import CheckChatInviteRequest
                 invite = await client(CheckChatInviteRequest(hash=invite_hash))
                 
-                # invite ممكن يكون ChatInvite أو ChatInviteAlready
                 if hasattr(invite, 'chat'):
                     return invite.chat
                 elif hasattr(invite, 'id'):
-                    # لو هو ChatInviteAlready
                     return await client.get_entity(invite.id)
             except Exception as e:
                 print(f"تجربة الانضمام للدعوة: {e}")
-                # لو فشلت، نحاول نجيب القناة بالطريقة العادية
                 pass
     
     # نحاول نجيب القناة بالاسم أو الـ ID
     try:
-        # لو كان رقم (ID)
         if channel_input.lstrip('-').isdigit():
             return await client.get_entity(int(channel_input))
     except:
         pass
     
-    # نحاول بالاسم المستخدم (@channel)
     try:
         return await client.get_entity(channel_input)
     except:
         pass
     
-    # نحاول بـ @
     try:
         return await client.get_entity(f"@{channel_input}")
     except:
@@ -258,19 +249,26 @@ async def main():
                 entity = await resolve_channel(client, channel)
                 peer = get_input_peer(entity)
                 
-                # ✅ الحل الصحيح: نجهز InputSingleMedia لكل ملف
-                
                 media_list = []
                 
-                # 1. الصورة: نرفعها كـ InputMediaUploadedPhoto (Photo عادي)
+                # ✅ الحل الجديد: نستخدم InputMediaUploadedDocument للصورة أيضاً
+                # مع mime_type image/jpeg و DocumentAttributeImageSize
+                # ده بيخليها تظهر كـ صورة عادية في الألبوم
+                
                 print("رفع الصورة...", end='', flush=True)
                 img_file = await client.upload_file(img_path)
                 
-                input_photo = InputMediaUploadedPhoto(
-                    file=img_file
+                # نحدد نوع الصورة
+                mime_type = 'image/jpeg'
+                if img_path.lower().endswith('.png'):
+                    mime_type = 'image/png'
+                
+                input_photo = InputMediaUploadedDocument(
+                    file=img_file,
+                    mime_type=mime_type,
+                    attributes=[DocumentAttributeImageSize(w=img_w, h=img_h)]
                 )
                 
-                # ✅ الكابشن بيكون في InputSingleMedia
                 media_list.append(InputSingleMedia(
                     media=input_photo,
                     message=caption,
@@ -278,16 +276,14 @@ async def main():
                 ))
                 print(" ✅")
                 
-                # 2. الفيديو: نرفعه كـ InputMediaUploadedDocument (Video)
+                # الفيديو
                 print("رفع الفيديو...", end='', flush=True)
                 vid_file = await client.upload_file(vid_path)
                 
-                # Thumbnail للفيديو
                 thumb = None
                 if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
                     thumb = await client.upload_file(vinfo['thumb'])
                 
-                # Attributes للفيديو
                 vid_attributes = [
                     DocumentAttributeVideo(
                         duration=vinfo['duration'],
@@ -305,7 +301,6 @@ async def main():
                     thumb=thumb
                 )
                 
-                # ✅ الكابشن فاضي للفيديو
                 media_list.append(InputSingleMedia(
                     media=input_video,
                     message='',
@@ -313,7 +308,7 @@ async def main():
                 ))
                 print(" ✅")
                 
-                # إرسال الألبوم - ✅ بدون reply_to_msg_id و schedule_date
+                # إرسال الألبوم
                 print("إرسال الألبوم...", end='', flush=True)
                 await client(SendMultiMediaRequest(
                     peer=peer,
@@ -364,7 +359,6 @@ async def main():
                 entity = await resolve_channel(client, channel)
                 peer = get_input_peer(entity)
                 
-                # رفع كل الحلقات كـ album
                 media_list = []
                 
                 for i, m in enumerate(media_files):
@@ -399,7 +393,6 @@ async def main():
                     ))
                     print(" ✅")
                 
-                # إرسال الألبوم - ✅ بدون reply_to_msg_id و schedule_date
                 print("إرسال الألبوم...", end='', flush=True)
                 await client(SendMultiMediaRequest(
                     peer=peer,
