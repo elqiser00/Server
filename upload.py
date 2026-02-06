@@ -10,13 +10,9 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import (
-    InputMediaUploadedDocument,
-    InputSingleMedia,
     DocumentAttributeVideo,
-    DocumentAttributeFilename,
-    DocumentAttributeImageSize
+    DocumentAttributeFilename
 )
-from telethon.tl.functions.messages import SendMultiMediaRequest
 from telethon.utils import get_input_peer
 import requests
 import ssl
@@ -242,43 +238,16 @@ async def main():
                 
                 print(f"\n📤 جاري رفع Album...")
                 entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
                 
-                # ✅ الحل: نستخدم InputMediaUploadedDocument للصورة والفيديو
-                # بس نخلي الصورة تظهر كـ صورة عادية
+                # ✅ الحل: نستخدم send_file مع album=True
+                # ونحط الـ thumb والـ attributes للفيديو بس
                 
-                media_list = []
+                files = [img_path, vid_path]
                 
-                # 1. الصورة: نرفعها كـ InputMediaUploadedDocument مع mime_type image
-                print("رفع الصورة...", end='', flush=True)
-                img_file = await client.upload_file(img_path)
-                
-                # نوع الصورة
-                mime_type = 'image/jpeg'
-                if img_path.lower().endswith('.png'):
-                    mime_type = 'image/png'
-                
-                input_photo = InputMediaUploadedDocument(
-                    file=img_file,
-                    mime_type=mime_type,
-                    attributes=[DocumentAttributeImageSize(w=img_w, h=img_h)]
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_photo,
-                    message=caption,
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # 2. الفيديو: نرفعه كـ InputMediaUploadedDocument
-                print("رفع الفيديو...", end='', flush=True)
-                vid_file = await client.upload_file(vid_path)
-                
-                # Thumbnail للفيديو من الثانية 3
+                # Thumbnail للفيديو
                 thumb = None
                 if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
-                    thumb = await client.upload_file(vinfo['thumb'])
+                    thumb = vinfo['thumb']  # مسار الملف مش الـ upload
                 
                 # Attributes للفيديو
                 vid_attributes = [
@@ -291,26 +260,21 @@ async def main():
                     DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
                 ]
                 
-                input_video = InputMediaUploadedDocument(
-                    file=vid_file,
-                    mime_type='video/mp4',
-                    attributes=vid_attributes,
-                    thumb=thumb  # ✅ Thumbnail هنا
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_video,
-                    message='',
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # ✅ إرسال الألبوم
                 print("إرسال الألبوم...", end='', flush=True)
-                await client(SendMultiMediaRequest(
-                    peer=peer,
-                    multi_media=media_list
-                ))
+                
+                # ✅ نستخدم send_file مع album=True
+                # والـ attributes للفيديو، والـ thumb للفيديو
+                await client.send_file(
+                    entity,
+                    files,
+                    caption=caption,
+                    parse_mode='html',
+                    album=True,
+                    supports_streaming=True,
+                    force_document=False,
+                    attributes=vid_attributes,
+                    thumb=thumb  # للفيديو بس
+                )
                 
                 print(" ✅ تم الرفع!")
                 print("\n🎉 Album: صورة فوق + فيديو تحت في نفس البوست")
@@ -354,47 +318,19 @@ async def main():
                 
                 print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
                 entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
                 
-                media_list = []
-                
-                for i, m in enumerate(media_files):
-                    print(f"رفع الحلقة {i+1}...", end='', flush=True)
-                    vid_file = await client.upload_file(m['file'])
-                    
-                    thumb = None
-                    if m['info']['thumb'] and os.path.exists(m['info']['thumb']):
-                        thumb = await client.upload_file(m['info']['thumb'])
-                    
-                    vid_attributes = [
-                        DocumentAttributeVideo(
-                            duration=m['info']['duration'],
-                            w=m['info']['width'],
-                            h=m['info']['height'],
-                            supports_streaming=True
-                        ),
-                        DocumentAttributeFilename(file_name=f"{m['name']}.mp4")
-                    ]
-                    
-                    input_video = InputMediaUploadedDocument(
-                        file=vid_file,
-                        mime_type='video/mp4',
-                        attributes=vid_attributes,
-                        thumb=thumb
-                    )
-                    
-                    media_list.append(InputSingleMedia(
-                        media=input_video,
-                        message=caption if i == 0 else '',
-                        entities=None
-                    ))
-                    print(" ✅")
+                files = [m['file'] for m in media_files]
                 
                 print("إرسال الألبوم...", end='', flush=True)
-                await client(SendMultiMediaRequest(
-                    peer=peer,
-                    multi_media=media_list
-                ))
+                await client.send_file(
+                    entity,
+                    files,
+                    caption=caption,
+                    parse_mode='html',
+                    album=True,
+                    supports_streaming=True,
+                    force_document=False
+                )
                 print(" ✅")
             
             print("\n" + "="*70)
