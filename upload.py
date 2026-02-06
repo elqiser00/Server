@@ -10,14 +10,9 @@ from urllib.parse import urlparse
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import (
-    InputMediaUploadedPhoto,
-    InputMediaUploadedDocument,
-    InputSingleMedia,
     DocumentAttributeVideo,
-    DocumentAttributeFilename,
-    DocumentAttributeImageSize
+    DocumentAttributeFilename
 )
-from telethon.tl.functions.messages import SendMultiMediaRequest
 from telethon.utils import get_input_peer
 import requests
 import ssl
@@ -95,11 +90,10 @@ def get_video_info(video_path):
         result = subprocess.run([
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height,duration',
-            '-show_entries', 'format=duration,size',
             '-of', 'default=noprint_wrappers=1', video_path
         ], capture_output=True, text=True, timeout=10)
         
-        duration, width, height, size_bytes = 0, 1280, 720, 0
+        duration, width, height = 0, 1280, 720
         for line in result.stdout.split('\n'):
             if 'duration=' in line:
                 try: duration = int(float(line.split('=')[1]))
@@ -110,20 +104,16 @@ def get_video_info(video_path):
             elif 'height=' in line:
                 try: height = int(line.split('=')[1])
                 except: pass
-            elif 'size=' in line:
-                try: size_bytes = int(line.split('=')[1])
-                except: pass
         
         return {
             'thumb': thumb_path if os.path.exists(thumb_path) else None,
             'duration': duration,
             'width': width,
-            'height': height,
-            'size': size_bytes
+            'height': height
         }
     except Exception as e:
         print(f"خطأ في تحليل الفيديو: {e}")
-        return {'thumb': None, 'duration': 0, 'width': 1280, 'height': 720, 'size': 0}
+        return {'thumb': None, 'duration': 0, 'width': 1280, 'height': 720}
 
 def get_image_info(image_path):
     """استخراج أبعاد الصورة"""
@@ -248,38 +238,21 @@ async def main():
                 
                 print(f"\n📤 جاري رفع Album...")
                 entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
                 
-                # ✅ الحل الصحيح: نجهز InputSingleMedia لكل ملف
+                # ✅ الحل: نستخدم send_file مع album=True
+                # ونحط الـ attributes للفيديو بس عن طريق خدعة
                 
-                media_list = []
+                files = [img_path, vid_path]
                 
-                # 1. الصورة: نرفعها كـ InputMediaUploadedPhoto
-                print("رفع الصورة...", end='', flush=True)
-                img_file = await client.upload_file(img_path)
-                
-                input_photo = InputMediaUploadedPhoto(
-                    file=img_file
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_photo,
-                    message=caption,
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # 2. الفيديو: نرفعه كـ InputMediaUploadedDocument
-                print("رفع الفيديو...", end='', flush=True)
-                vid_file = await client.upload_file(vid_path)
-                
-                # ✅ Thumbnail من الثانية 3
+                # نرفع الـ thumbnail للفيديو
                 thumb = None
                 if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
-                    thumb_file = await client.upload_file(vinfo['thumb'])
-                    thumb = thumb_file
+                    thumb = await client.upload_file(vinfo['thumb'])
                 
-                # ✅ Attributes مهم جداً عشان يظهر معلومات الفيديو
+                # ✅ Attributes للفيديو فقط
+                # ملاحظة: لما نستخدم album=True، الـ attributes بتتطبق على كل الملفات
+                # فنحطهم في قائمة عشان Telethon يعرف يفرق
+                
                 vid_attributes = [
                     DocumentAttributeVideo(
                         duration=vinfo['duration'],
@@ -290,26 +263,21 @@ async def main():
                     DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
                 ]
                 
-                input_video = InputMediaUploadedDocument(
-                    file=vid_file,
-                    mime_type='video/mp4',
-                    attributes=vid_attributes,
-                    thumb=thumb  # ✅ Thumbnail هنا
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_video,
-                    message='',  # مفيش كابشن للفيديو
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # ✅ إرسال الألبوم
                 print("إرسال الألبوم...", end='', flush=True)
-                await client(SendMultiMediaRequest(
-                    peer=peer,
-                    multi_media=media_list
-                ))
+                
+                # ✅ نستخدم send_file مع album=True ونحط الـ attributes
+                # والـ thumb للفيديو
+                await client.send_file(
+                    entity,
+                    files,
+                    caption=caption,
+                    parse_mode='html',
+                    album=True,
+                    supports_streaming=True,
+                    force_document=False,
+                    attributes=vid_attributes,
+                    thumb=thumb  # للفيديو بس
+                )
                 
                 print(" ✅ تم الرفع!")
                 print("\n🎉 Album: صورة فوق + فيديو تحت في نفس البوست")
@@ -353,47 +321,19 @@ async def main():
                 
                 print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
                 entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
                 
-                media_list = []
-                
-                for i, m in enumerate(media_files):
-                    print(f"رفع الحلقة {i+1}...", end='', flush=True)
-                    vid_file = await client.upload_file(m['file'])
-                    
-                    thumb = None
-                    if m['info']['thumb'] and os.path.exists(m['info']['thumb']):
-                        thumb = await client.upload_file(m['info']['thumb'])
-                    
-                    vid_attributes = [
-                        DocumentAttributeVideo(
-                            duration=m['info']['duration'],
-                            w=m['info']['width'],
-                            h=m['info']['height'],
-                            supports_streaming=True
-                        ),
-                        DocumentAttributeFilename(file_name=f"{m['name']}.mp4")
-                    ]
-                    
-                    input_video = InputMediaUploadedDocument(
-                        file=vid_file,
-                        mime_type='video/mp4',
-                        attributes=vid_attributes,
-                        thumb=thumb
-                    )
-                    
-                    media_list.append(InputSingleMedia(
-                        media=input_video,
-                        message=caption if i == 0 else '',
-                        entities=None
-                    ))
-                    print(" ✅")
+                files = [m['file'] for m in media_files]
                 
                 print("إرسال الألبوم...", end='', flush=True)
-                await client(SendMultiMediaRequest(
-                    peer=peer,
-                    multi_media=media_list
-                ))
+                await client.send_file(
+                    entity,
+                    files,
+                    caption=caption,
+                    parse_mode='html',
+                    album=True,
+                    supports_streaming=True,
+                    force_document=False
+                )
                 print(" ✅")
             
             print("\n" + "="*70)
