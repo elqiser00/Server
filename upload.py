@@ -4,6 +4,7 @@ import sys
 import asyncio
 import tempfile
 import mimetypes
+import time
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
@@ -18,13 +19,15 @@ from telethon.tl.types import (
     DocumentAttributeImageSize
 )
 from telethon.tl.functions.messages import SendMultiMediaRequest
-from telethon.utils import get_input_peer, get_extension
+from telethon.utils import get_input_peer
 import requests
 import ssl
 import urllib3
 from PIL import Image
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+MAX_VIDEO_SIZE_MB = 1999.0
 
 def sanitize_filename(filename):
     return "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).strip().rstrip('.')
@@ -127,21 +130,62 @@ def get_image_info(image_path):
         return 1280, 720
 
 async def resolve_channel(client, channel_input):
+    """تحويل أي رابط أو اسم قناة لـ entity"""
     channel_input = channel_input.strip()
+    
+    # تنظيف الرابط
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
         if channel_input.startswith(prefix):
             channel_input = channel_input[len(prefix):]
+            break
     
+    # إزالة @ لو موجود في الأول
+    if channel_input.startswith('@'):
+        channel_input = channel_input[1:]
+    
+    # لو فيه + يبقى رابط دعوة
     if '+' in channel_input:
+        # نحاول نجيب الـ hash بعد الـ +
         parts = channel_input.split('+')
-        if len(parts) > 1:
-            invite_hash = parts[1].split('?')[0].split('/')[0].strip()
+        if len(parts) >= 2:
+            invite_hash = parts[-1].split('?')[0].split('/')[0].strip()
             try:
-                return await client.get_entity(f"https://t.me/joinchat/ {invite_hash}")
-            except:
+                # نستخدم CheckChatInvite عشان نجيب معلومات الدعوة
+                from telethon.tl.functions.messages import CheckChatInviteRequest
+                invite = await client(CheckChatInviteRequest(hash=invite_hash))
+                
+                # invite ممكن يكون ChatInvite أو ChatInviteAlready
+                if hasattr(invite, 'chat'):
+                    return invite.chat
+                elif hasattr(invite, 'id'):
+                    # لو هو ChatInviteAlready
+                    return await client.get_entity(invite.id)
+            except Exception as e:
+                print(f"تجربة الانضمام للدعوة: {e}")
+                # لو فشلت، نحاول نجيب القناة بالطريقة العادية
                 pass
     
-    return await client.get_entity(channel_input)
+    # نحاول نجيب القناة بالاسم أو الـ ID
+    try:
+        # لو كان رقم (ID)
+        if channel_input.lstrip('-').isdigit():
+            return await client.get_entity(int(channel_input))
+    except:
+        pass
+    
+    # نحاول بالاسم المستخدم (@channel)
+    try:
+        return await client.get_entity(channel_input)
+    except:
+        pass
+    
+    # نحاول بـ @
+    try:
+        return await client.get_entity(f"@{channel_input}")
+    except:
+        pass
+    
+    raise Exception(f"مش لاقي القناة: {channel_input}")
 
 async def main():
     print("="*70)
