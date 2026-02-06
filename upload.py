@@ -266,7 +266,6 @@ async def main():
                 print("رفع الصورة...", end='', flush=True)
                 img_file = await client.upload_file(img_path)
                 
-                # ✅ InputMediaUploadedPhoto مالهوش message parameter
                 input_photo = InputMediaUploadedPhoto(
                     file=img_file
                 )
@@ -274,7 +273,7 @@ async def main():
                 # ✅ الكابشن بيكون في InputSingleMedia
                 media_list.append(InputSingleMedia(
                     media=input_photo,
-                    message=caption,  # الكابشن هنا
+                    message=caption,
                     entities=None
                 ))
                 print(" ✅")
@@ -299,7 +298,6 @@ async def main():
                     DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
                 ]
                 
-                # ✅ InputMediaUploadedDocument مالهوش message parameter
                 input_video = InputMediaUploadedDocument(
                     file=vid_file,
                     mime_type='video/mp4',
@@ -310,18 +308,16 @@ async def main():
                 # ✅ الكابشن فاضي للفيديو
                 media_list.append(InputSingleMedia(
                     media=input_video,
-                    message='',  # مفيش كابشن هنا
+                    message='',
                     entities=None
                 ))
                 print(" ✅")
                 
-                # إرسال الألبوم
+                # إرسال الألبوم - ✅ بدون reply_to_msg_id و schedule_date
                 print("إرسال الألبوم...", end='', flush=True)
                 await client(SendMultiMediaRequest(
                     peer=peer,
-                    multi_media=media_list,
-                    reply_to_msg_id=None,
-                    schedule_date=None
+                    multi_media=media_list
                 ))
                 
                 print(" ✅ تم الرفع!")
@@ -403,13 +399,11 @@ async def main():
                     ))
                     print(" ✅")
                 
-                # إرسال الألبوم
+                # إرسال الألبوم - ✅ بدون reply_to_msg_id و schedule_date
                 print("إرسال الألبوم...", end='', flush=True)
                 await client(SendMultiMediaRequest(
                     peer=peer,
-                    multi_media=media_list,
-                    reply_to_msg_id=None,
-                    schedule_date=None
+                    multi_media=media_list
                 ))
                 print(" ✅")
             
