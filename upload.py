@@ -239,15 +239,10 @@ async def main():
                 print(f"\n📤 جاري رفع Album...")
                 entity = await resolve_channel(client, channel)
                 
-                # ✅ الحل: نستخدم send_file مع album=True
-                # ونحط الـ thumb والـ attributes للفيديو بس
+                # ✅ الحل الجديد: نستخدم send_file مع album=True
+                # ونحط الـ thumb والـ attributes في كائنات منفصلة
                 
                 files = [img_path, vid_path]
-                
-                # Thumbnail للفيديو
-                thumb = None
-                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
-                    thumb = vinfo['thumb']  # مسار الملف مش الـ upload
                 
                 # Attributes للفيديو
                 vid_attributes = [
@@ -259,6 +254,12 @@ async def main():
                     ),
                     DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
                 ]
+                
+                # ✅ نحاول نحط الـ thumb كـ file object
+                thumb = None
+                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
+                    # نرفع الـ thumbnail كـ file
+                    thumb = vinfo['thumb']
                 
                 print("إرسال الألبوم...", end='', flush=True)
                 
@@ -273,7 +274,7 @@ async def main():
                     supports_streaming=True,
                     force_document=False,
                     attributes=vid_attributes,
-                    thumb=thumb  # للفيديو بس
+                    thumb=thumb
                 )
                 
                 print(" ✅ تم الرفع!")
