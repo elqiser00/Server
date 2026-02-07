@@ -74,23 +74,19 @@ async def download_file(url, save_dir, base_name, is_image=False):
 def get_video_info(video_path):
     """استخراج معلومات الفيديو وعمل thumbnail صح"""
     try:
-        # ✅ Thumbnail من الثانية 3 بجودة عالية
         thumb_path = video_path + "_thumb.jpg"
         
-        # نستخدم ffmpeg عشان نعمل thumbnail بـ 320x320 (الحجم القياسي لتيليجرام)
         result = subprocess.run([
             'ffmpeg', '-i', video_path, 
-            '-ss', '00:00:03',  # الثانية 3
-            '-vframes', '1',     # صورة واحدة
-            '-q:v', '2',         # جودة عالية
+            '-ss', '00:00:03',
+            '-vframes', '1',
+            '-q:v', '2',
             '-vf', 'scale=320:320:force_original_aspect_ratio=decrease,pad=320:320:(ow-iw)/2:(oh-ih)/2:black',
             '-y',
             thumb_path
         ], capture_output=True, timeout=30)
         
         if result.returncode != 0:
-            print(f"FFmpeg error: {result.stderr.decode()}")
-            # طريقة تانية أبسط
             subprocess.run([
                 'ffmpeg', '-i', video_path, 
                 '-ss', '00:00:05',
@@ -99,7 +95,6 @@ def get_video_info(video_path):
                 thumb_path
             ], capture_output=True, timeout=30)
         
-        # معلومات الفيديو
         result = subprocess.run([
             'ffprobe', '-v', 'error', '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height,duration',
@@ -118,7 +113,6 @@ def get_video_info(video_path):
                 try: height = int(line.split('=')[1])
                 except: pass
         
-        # نتأكد إن الـ thumbnail موجود وصالح
         if not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
             thumb_path = None
         
@@ -141,21 +135,25 @@ def get_image_info(image_path):
         return 1280, 720
 
 def resolve_channel_id(channel_input):
-    """تحويل رابط القناة لـ ID"""
+    """تحويل رابط القناة لـ ID صحيح للـ Pyrogram"""
     channel_input = channel_input.strip()
     
+    # تنظيف الرابط
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
         if channel_input.startswith(prefix):
             channel_input = channel_input[len(prefix):]
             break
     
-    if channel_input.startswith('@'):
-        channel_input = channel_input[1:]
+    # ✅ رابط دعوة خاص (بيبدأ بـ +)
+    if channel_input.startswith('+'):
+        # Pyrogram بيتعامل مع روابط الدعوة بالشكل ده
+        return channel_input  # مثلاً: +VvLRMffUCXNlNjRk
     
-    if '+' in channel_input:
-        return channel_input  # رابط دعوة خاص
+    # قناة عامة (بـ @)
+    if not channel_input.startswith('@'):
+        channel_input = '@' + channel_input
     
-    return f"@{channel_input}"  # قناة عامة
+    return channel_input
 
 async def main():
     print("="*70)
@@ -174,7 +172,6 @@ async def main():
     if mode not in ['movie', 'series']:
         raise Exception("اختر 'movie' أو 'series'")
     
-    # ✅ Pyrogram Client
     app = Client(
         "my_account",
         api_id=int(os.getenv('TELEGRAM_API_ID')),
@@ -201,7 +198,6 @@ async def main():
                 img_path, img_size = await download_file(img_url, tmp_dir, 'poster', is_image=True)
                 print(f" ✅ ({img_size:.1f}MB)")
                 
-                # تحويل WebP لـ JPG
                 if img_path.lower().endswith('.webp'):
                     try:
                         jpg_path = str(Path(img_path).with_suffix('.jpg'))
@@ -224,8 +220,27 @@ async def main():
                 if vinfo['thumb']:
                     print(f"📸 Thumbnail: {os.path.getsize(vinfo['thumb'])/1024:.1f}KB")
                 
+                # ✅ تحديد القناة بالطريقة الصحيحة
                 chat_id = resolve_channel_id(channel)
                 print(f"\n📤 جاري رفع Album على: {chat_id}")
+                
+                # ✅ نجرب ننضم للقناة الأول لو هي رابط دعوة
+                if chat_id.startswith('+'):
+                    try:
+                        print("محاولة الانضمام للقناة...", end='', flush=True)
+                        chat = await app.join_chat(chat_id)
+                        chat_id = chat.id
+                        print(f" ✅ (ID: {chat_id})")
+                    except Exception as e:
+                        print(f" ⚠️ ({e})")
+                        # ممكن نكون منضمينalready، نحاول نجيب الـ ID
+                        try:
+                            chat = await app.get_chat(chat_id)
+                            chat_id = chat.id
+                            print(f"✅ جبت الـ ID: {chat_id}")
+                        except Exception as e2:
+                            print(f"❌ فشل: {e2}")
+                            raise
                 
                 # ✅ إعداد الـ media group
                 media_group = []
@@ -238,7 +253,7 @@ async def main():
                     )
                 )
                 
-                # 2. الفيديو مع thumbnail وكل التفاصيل
+                # 2. الفيديو مع thumbnail
                 video_kwargs = {
                     'media': vid_path,
                     'supports_streaming': True,
@@ -247,10 +262,9 @@ async def main():
                     'duration': vinfo['duration']
                 }
                 
-                # ✅ إضافة thumbnail لو موجود
                 if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
                     video_kwargs['thumb'] = vinfo['thumb']
-                    print(f"✅ هنستخدم thumbnail: {vinfo['thumb']}")
+                    print(f"✅ هنستخدم thumbnail")
                 else:
                     print("⚠️ مفيش thumbnail")
                 
@@ -258,7 +272,6 @@ async def main():
                 
                 print("إرسال الألبوم...", end='', flush=True)
                 
-                # ✅ إرسال الـ album
                 await app.send_media_group(
                     chat_id=chat_id,
                     media=media_group
@@ -306,6 +319,15 @@ async def main():
                 
                 chat_id = resolve_channel_id(channel)
                 print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
+                
+                # ننضم للقناة لو لازم
+                if chat_id.startswith('+'):
+                    try:
+                        chat = await app.join_chat(chat_id)
+                        chat_id = chat.id
+                    except:
+                        chat = await app.get_chat(chat_id)
+                        chat_id = chat.id
                 
                 media_group = []
                 
