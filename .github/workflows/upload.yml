@@ -63,7 +63,10 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install telethon requests urllib3 pillow
-      
+      - name: 📦 تثبيت المكتبات
+        run: |
+         pip install --upgrade pip
+         pip install pyrogram tgcrypto requests urllib3 pillow
       - name: 🔒 التحقق من الأسرار
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
