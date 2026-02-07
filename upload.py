@@ -7,13 +7,8 @@ import mimetypes
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.tl.types import (
-    DocumentAttributeVideo,
-    DocumentAttributeFilename
-)
-from telethon.utils import get_input_peer
+from pyrogram import Client
+from pyrogram.types import InputMediaPhoto, InputMediaVideo
 import requests
 import ssl
 import urllib3
@@ -77,14 +72,32 @@ async def download_file(url, save_dir, base_name, is_image=False):
             raise Exception(f"فشل التنزيل: {str(e)}")
 
 def get_video_info(video_path):
-    """استخراج معلومات الفيديو"""
+    """استخراج معلومات الفيديو وعمل thumbnail صح"""
     try:
-        # Thumbnail من الثانية 3
+        # ✅ Thumbnail من الثانية 3 بجودة عالية
         thumb_path = video_path + "_thumb.jpg"
-        subprocess.run([
-            'ffmpeg', '-i', video_path, '-ss', '00:00:03',
-            '-vframes', '1', '-q:v', '2', '-y', thumb_path
+        
+        # نستخدم ffmpeg عشان نعمل thumbnail بـ 320x320 (الحجم القياسي لتيليجرام)
+        result = subprocess.run([
+            'ffmpeg', '-i', video_path, 
+            '-ss', '00:00:03',  # الثانية 3
+            '-vframes', '1',     # صورة واحدة
+            '-q:v', '2',         # جودة عالية
+            '-vf', 'scale=320:320:force_original_aspect_ratio=decrease,pad=320:320:(ow-iw)/2:(oh-ih)/2:black',
+            '-y',
+            thumb_path
         ], capture_output=True, timeout=30)
+        
+        if result.returncode != 0:
+            print(f"FFmpeg error: {result.stderr.decode()}")
+            # طريقة تانية أبسط
+            subprocess.run([
+                'ffmpeg', '-i', video_path, 
+                '-ss', '00:00:05',
+                '-vframes', '1',
+                '-y',
+                thumb_path
+            ], capture_output=True, timeout=30)
         
         # معلومات الفيديو
         result = subprocess.run([
@@ -105,8 +118,12 @@ def get_video_info(video_path):
                 try: height = int(line.split('=')[1])
                 except: pass
         
+        # نتأكد إن الـ thumbnail موجود وصالح
+        if not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
+            thumb_path = None
+        
         return {
-            'thumb': thumb_path if os.path.exists(thumb_path) else None,
+            'thumb': thumb_path,
             'duration': duration,
             'width': width,
             'height': height
@@ -123,8 +140,8 @@ def get_image_info(image_path):
     except:
         return 1280, 720
 
-async def resolve_channel(client, channel_input):
-    """تحويل أي رابط أو اسم قناة لـ entity"""
+def resolve_channel_id(channel_input):
+    """تحويل رابط القناة لـ ID"""
     channel_input = channel_input.strip()
     
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
@@ -136,42 +153,13 @@ async def resolve_channel(client, channel_input):
         channel_input = channel_input[1:]
     
     if '+' in channel_input:
-        parts = channel_input.split('+')
-        if len(parts) >= 2:
-            invite_hash = parts[-1].split('?')[0].split('/')[0].strip()
-            try:
-                from telethon.tl.functions.messages import CheckChatInviteRequest
-                invite = await client(CheckChatInviteRequest(hash=invite_hash))
-                
-                if hasattr(invite, 'chat'):
-                    return invite.chat
-                elif hasattr(invite, 'id'):
-                    return await client.get_entity(invite.id)
-            except Exception as e:
-                print(f"تجربة الانضمام للدعوة: {e}")
-                pass
+        return channel_input  # رابط دعوة خاص
     
-    try:
-        if channel_input.lstrip('-').isdigit():
-            return await client.get_entity(int(channel_input))
-    except:
-        pass
-    
-    try:
-        return await client.get_entity(channel_input)
-    except:
-        pass
-    
-    try:
-        return await client.get_entity(f"@{channel_input}")
-    except:
-        pass
-    
-    raise Exception(f"مش لاقي القناة: {channel_input}")
+    return f"@{channel_input}"  # قناة عامة
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album (Telethon) - صورة + فيديو")
+    print("🚀 سكريبت رفع Album (Pyrogram) - صورة + فيديو")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -186,18 +174,19 @@ async def main():
     if mode not in ['movie', 'series']:
         raise Exception("اختر 'movie' أو 'series'")
     
-    client = TelegramClient(
-        StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
-        int(os.getenv('TELEGRAM_API_ID')),
-        os.getenv('TELEGRAM_API_HASH'),
-        flood_sleep_threshold=120
+    # ✅ Pyrogram Client
+    app = Client(
+        "my_account",
+        api_id=int(os.getenv('TELEGRAM_API_ID')),
+        api_hash=os.getenv('TELEGRAM_API_HASH'),
+        session_string=os.getenv('TELEGRAM_SESSION_STRING')
     )
-    await client.start()
-    me = await client.get_me()
-    print(f"✅ تم تسجيل الدخول: {me.first_name}")
     
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        try:
+    async with app:
+        me = await app.get_me()
+        print(f"✅ تم تسجيل الدخول: {me.first_name}")
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
             if mode == 'movie':
                 img_url = os.getenv('IMAGE_URL', '').strip()
                 vid_url = os.getenv('VIDEO_URL', '').strip()
@@ -212,6 +201,7 @@ async def main():
                 img_path, img_size = await download_file(img_url, tmp_dir, 'poster', is_image=True)
                 print(f" ✅ ({img_size:.1f}MB)")
                 
+                # تحويل WebP لـ JPG
                 if img_path.lower().endswith('.webp'):
                     try:
                         jpg_path = str(Path(img_path).with_suffix('.jpg'))
@@ -224,64 +214,126 @@ async def main():
                 vid_path, vid_size = await download_file(vid_url, tmp_dir, vid_name, is_image=False)
                 print(f" ✅ ({vid_size:.1f}MB)")
                 
-                print("تحليل الملفات...", end='', flush=True)
+                print("تحليل الملفات وإنشاء thumbnail...", end='', flush=True)
                 vinfo = get_video_info(vid_path)
                 img_w, img_h = get_image_info(img_path)
                 print(f" ✅")
                 
                 print(f"📐 أبعاد الصورة: {img_w}x{img_h}")
                 print(f"📐 أبعاد الفيديو: {vinfo['width']}x{vinfo['height']}")
+                if vinfo['thumb']:
+                    print(f"📸 Thumbnail: {os.path.getsize(vinfo['thumb'])/1024:.1f}KB")
                 
-                entity = await resolve_channel(client, channel)
+                chat_id = resolve_channel_id(channel)
+                print(f"\n📤 جاري رفع Album على: {chat_id}")
                 
-                # ✅ الحل: نرفع الصورة والفيديو كـ album بس بطريقة مختلفة
-                # نستخدم send_file مع album=True ونحط الـ thumb كـ file path
+                # ✅ إعداد الـ media group
+                media_group = []
                 
-                files = [img_path, vid_path]
+                # 1. الصورة
+                media_group.append(
+                    InputMediaPhoto(
+                        media=img_path,
+                        caption=caption
+                    )
+                )
                 
-                vid_attributes = [
-                    DocumentAttributeVideo(
-                        duration=vinfo['duration'],
-                        w=vinfo['width'],
-                        h=vinfo['height'],
-                        supports_streaming=True
-                    ),
-                    DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
-                ]
+                # 2. الفيديو مع thumbnail وكل التفاصيل
+                video_kwargs = {
+                    'media': vid_path,
+                    'supports_streaming': True,
+                    'width': vinfo['width'],
+                    'height': vinfo['height'],
+                    'duration': vinfo['duration']
+                }
+                
+                # ✅ إضافة thumbnail لو موجود
+                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
+                    video_kwargs['thumb'] = vinfo['thumb']
+                    print(f"✅ هنستخدم thumbnail: {vinfo['thumb']}")
+                else:
+                    print("⚠️ مفيش thumbnail")
+                
+                media_group.append(InputMediaVideo(**video_kwargs))
                 
                 print("إرسال الألبوم...", end='', flush=True)
                 
-                # ✅ نجرب نحط الـ thumb في الـ file object نفسه
-                # عن طريق استخدام upload_file للـ thumb
-                thumb = None
-                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
-                    thumb = await client.upload_file(vinfo['thumb'])
-                
-                await client.send_file(
-                    entity,
-                    files,
-                    caption=caption,
-                    parse_mode='html',
-                    album=True,
-                    supports_streaming=True,
-                    force_document=False,
-                    attributes=vid_attributes,
-                    thumb=thumb  # ✅ InputFile هنا
+                # ✅ إرسال الـ album
+                await app.send_media_group(
+                    chat_id=chat_id,
+                    media=media_group
                 )
                 
                 print(" ✅ تم الرفع!")
                 print("\n🎉 Album: صورة فوق + فيديو تحت في نفس البوست")
             
             else:  # series
-                # ... نفس الكود
-                pass
+                try:
+                    import json
+                    series = json.loads(os.getenv('SERIES_VIDEOS', '[]'))
+                except:
+                    raise Exception("JSON غير صالح")
+                
+                if not series:
+                    raise Exception("مطلوب ملف واحد على الأقل")
+                
+                print(f"\n📥 جاري تحميل {len(series)} حلقات...")
+                
+                media_files = []
+                for i, item in enumerate(series[:10], 1):
+                    url = item.get('url', '').strip()
+                    name = item.get('name', f'الحلقة_{i}').strip()
+                    
+                    if not url:
+                        continue
+                    
+                    print(f"تحميل الحلقة {i}...", end='', flush=True)
+                    try:
+                        fpath, fsize = await download_file(url, tmp_dir, name, is_image=False)
+                        vinfo = get_video_info(fpath)
+                        
+                        media_files.append({
+                            'file': fpath,
+                            'name': name,
+                            'info': vinfo
+                        })
+                        print(f" ✅")
+                    except Exception as e:
+                        print(f" ❌ ({e})")
+                
+                if not media_files:
+                    raise Exception("فشل تحميل جميع الملفات")
+                
+                chat_id = resolve_channel_id(channel)
+                print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
+                
+                media_group = []
+                
+                for i, m in enumerate(media_files):
+                    video_kwargs = {
+                        'media': m['file'],
+                        'supports_streaming': True,
+                        'width': m['info']['width'],
+                        'height': m['info']['height'],
+                        'duration': m['info']['duration'],
+                        'caption': caption if i == 0 else None
+                    }
+                    
+                    if m['info']['thumb'] and os.path.exists(m['info']['thumb']):
+                        video_kwargs['thumb'] = m['info']['thumb']
+                    
+                    media_group.append(InputMediaVideo(**video_kwargs))
+                
+                print("إرسال الألبوم...", end='', flush=True)
+                await app.send_media_group(
+                    chat_id=chat_id,
+                    media=media_group
+                )
+                print(" ✅")
             
             print("\n" + "="*70)
             print("✅ تم بنجاح!")
             print("="*70)
-            
-        finally:
-            await client.disconnect()
 
 if __name__ == "__main__":
     try:
