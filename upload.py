@@ -134,27 +134,6 @@ def get_image_info(image_path):
     except:
         return 1280, 720
 
-def resolve_channel_id(channel_input):
-    """تحويل رابط القناة لـ ID صحيح للـ Pyrogram"""
-    channel_input = channel_input.strip()
-    
-    # تنظيف الرابط
-    for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
-        if channel_input.startswith(prefix):
-            channel_input = channel_input[len(prefix):]
-            break
-    
-    # ✅ رابط دعوة خاص (بيبدأ بـ +)
-    if channel_input.startswith('+'):
-        # Pyrogram بيتعامل مع روابط الدعوة بالشكل ده
-        return channel_input  # مثلاً: +VvLRMffUCXNlNjRk
-    
-    # قناة عامة (بـ @)
-    if not channel_input.startswith('@'):
-        channel_input = '@' + channel_input
-    
-    return channel_input
-
 async def main():
     print("="*70)
     print("🚀 سكريبت رفع Album (Pyrogram) - صورة + فيديو")
@@ -220,27 +199,23 @@ async def main():
                 if vinfo['thumb']:
                     print(f"📸 Thumbnail: {os.path.getsize(vinfo['thumb'])/1024:.1f}KB")
                 
-                # ✅ تحديد القناة بالطريقة الصحيحة
-                chat_id = resolve_channel_id(channel)
-                print(f"\n📤 جاري رفع Album على: {chat_id}")
+                print(f"\n📤 جاري رفع Album على: {channel}")
                 
-                # ✅ نجرب ننضم للقناة الأول لو هي رابط دعوة
-                if chat_id.startswith('+'):
+                # ✅ ننضم للقناة الأول (سواء رابط دعوة أو قناة عامة)
+                try:
+                    print("محاولة الانضمام للقناة...", end='', flush=True)
+                    chat = await app.join_chat(channel)
+                    chat_id = chat.id
+                    print(f" ✅")
+                except Exception as e:
+                    # ممكن نكون منضمين already
                     try:
-                        print("محاولة الانضمام للقناة...", end='', flush=True)
-                        chat = await app.join_chat(chat_id)
+                        chat = await app.get_chat(channel)
                         chat_id = chat.id
-                        print(f" ✅ (ID: {chat_id})")
-                    except Exception as e:
-                        print(f" ⚠️ ({e})")
-                        # ممكن نكون منضمينalready، نحاول نجيب الـ ID
-                        try:
-                            chat = await app.get_chat(chat_id)
-                            chat_id = chat.id
-                            print(f"✅ جبت الـ ID: {chat_id}")
-                        except Exception as e2:
-                            print(f"❌ فشل: {e2}")
-                            raise
+                        print(f" ✅ (منضم already)")
+                    except Exception as e2:
+                        print(f" ❌ فشل: {e2}")
+                        raise
                 
                 # ✅ إعداد الـ media group
                 media_group = []
@@ -317,17 +292,13 @@ async def main():
                 if not media_files:
                     raise Exception("فشل تحميل جميع الملفات")
                 
-                chat_id = resolve_channel_id(channel)
-                print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
-                
-                # ننضم للقناة لو لازم
-                if chat_id.startswith('+'):
-                    try:
-                        chat = await app.join_chat(chat_id)
-                        chat_id = chat.id
-                    except:
-                        chat = await app.get_chat(chat_id)
-                        chat_id = chat.id
+                # ننضم للقناة
+                try:
+                    chat = await app.join_chat(channel)
+                    chat_id = chat.id
+                except:
+                    chat = await app.get_chat(channel)
+                    chat_id = chat.id
                 
                 media_group = []
                 
