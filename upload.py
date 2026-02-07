@@ -7,17 +7,8 @@ import mimetypes
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.tl.types import (
-    InputMediaUploadedDocument,
-    InputSingleMedia,
-    DocumentAttributeVideo,
-    DocumentAttributeFilename,
-    DocumentAttributeImageSize
-)
-from telethon.tl.functions.messages import SendMultiMediaRequest
-from telethon.utils import get_input_peer
+from pyrogram import Client
+from pyrogram.types import InputMediaPhoto, InputMediaVideo
 import requests
 import ssl
 import urllib3
@@ -127,55 +118,32 @@ def get_image_info(image_path):
     except:
         return 1280, 720
 
-async def resolve_channel(client, channel_input):
-    """تحويل أي رابط أو اسم قناة لـ entity"""
+def resolve_channel_id(channel_input):
+    """تحويل رابط القناة لـ ID"""
     channel_input = channel_input.strip()
     
+    # تنظيف الرابط
     for prefix in ['https://', 'http://', 't.me/', 'telegram.me/']:
         if channel_input.startswith(prefix):
             channel_input = channel_input[len(prefix):]
             break
     
+    # إزالة @
     if channel_input.startswith('@'):
         channel_input = channel_input[1:]
     
+    # رابط دعوة خاص
     if '+' in channel_input:
-        parts = channel_input.split('+')
-        if len(parts) >= 2:
-            invite_hash = parts[-1].split('?')[0].split('/')[0].strip()
-            try:
-                from telethon.tl.functions.messages import CheckChatInviteRequest
-                invite = await client(CheckChatInviteRequest(hash=invite_hash))
-                
-                if hasattr(invite, 'chat'):
-                    return invite.chat
-                elif hasattr(invite, 'id'):
-                    return await client.get_entity(invite.id)
-            except Exception as e:
-                print(f"تجربة الانضمام للدعوة: {e}")
-                pass
+        # Pyrogram بيتعامل مع روابط الدعوة بشكل مختلف
+        # هنرجع الـ link كامل وهو هيتعامل معاه
+        return channel_input
     
-    try:
-        if channel_input.lstrip('-').isdigit():
-            return await client.get_entity(int(channel_input))
-    except:
-        pass
-    
-    try:
-        return await client.get_entity(channel_input)
-    except:
-        pass
-    
-    try:
-        return await client.get_entity(f"@{channel_input}")
-    except:
-        pass
-    
-    raise Exception(f"مش لاقي القناة: {channel_input}")
+    # قناة عامة
+    return f"@{channel_input}"
 
 async def main():
     print("="*70)
-    print("🚀 سكريبت رفع Album (صورة + فيديو) - نفس البوست")
+    print("🚀 سكريبت رفع Album (Pyrogram) - صورة + فيديو")
     print("="*70)
     
     required = ['MODE', 'CHANNEL', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING']
@@ -190,18 +158,20 @@ async def main():
     if mode not in ['movie', 'series']:
         raise Exception("اختر 'movie' أو 'series'")
     
-    client = TelegramClient(
-        StringSession(os.getenv('TELEGRAM_SESSION_STRING')),
-        int(os.getenv('TELEGRAM_API_ID')),
-        os.getenv('TELEGRAM_API_HASH'),
+    # ✅ Pyrogram Client
+    app = Client(
+        "my_account",
+        api_id=int(os.getenv('TELEGRAM_API_ID')),
+        api_hash=os.getenv('TELEGRAM_API_HASH'),
+        session_string=os.getenv('TELEGRAM_SESSION_STRING'),
         flood_sleep_threshold=120
     )
-    await client.start()
-    me = await client.get_me()
-    print(f"✅ تم تسجيل الدخول: {me.first_name}")
     
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        try:
+    async with app:
+        me = await app.get_me()
+        print(f"✅ تم تسجيل الدخول: {me.first_name}")
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
             if mode == 'movie':
                 img_url = os.getenv('IMAGE_URL', '').strip()
                 vid_url = os.getenv('VIDEO_URL', '').strip()
@@ -240,83 +210,42 @@ async def main():
                 print(f"📐 أبعاد الصورة: {img_w}x{img_h}")
                 print(f"📐 أبعاد الفيديو: {vinfo['width']}x{vinfo['height']}")
                 
-                print(f"\n📤 جاري رفع Album...")
-                entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
+                # تحديد القناة
+                chat_id = resolve_channel_id(channel)
+                print(f"\n📤 جاري رفع Album على: {chat_id}")
                 
-                # ✅ الحل: نستخدم SendMultiMediaRequest مع InputMediaUploadedDocument
+                # ✅ إعداد الـ media group
+                media_group = []
                 
-                media_list = []
-                
-                # 1. الصورة: نرفعها كـ InputMediaUploadedDocument
-                print("رفع الصورة...", end='', flush=True)
-                img_file = await client.upload_file(img_path)
-                
-                mime_type = 'image/jpeg'
-                if img_path.lower().endswith('.png'):
-                    mime_type = 'image/png'
-                
-                input_photo = InputMediaUploadedDocument(
-                    file=img_file,
-                    mime_type=mime_type,
-                    attributes=[DocumentAttributeImageSize(w=img_w, h=img_h)]
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_photo,
-                    message=caption,
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # 2. الفيديو: نرفعه كـ InputMediaUploadedDocument مع thumbnail
-                print("رفع الفيديو...", end='', flush=True)
-                vid_file = await client.upload_file(vid_path)
-                
-                # ✅ نرفع الـ thumbnail كـ InputFile
-                thumb_file = None
-                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
-                    thumb_file = await client.upload_file(vinfo['thumb'])
-                
-                vid_attributes = [
-                    DocumentAttributeVideo(
-                        duration=vinfo['duration'],
-                        w=vinfo['width'],
-                        h=vinfo['height'],
-                        supports_streaming=True
-                    ),
-                    DocumentAttributeFilename(file_name=f"{vid_name}.mp4")
-                ]
-                
-                input_video = InputMediaUploadedDocument(
-                    file=vid_file,
-                    mime_type='video/mp4',
-                    attributes=vid_attributes,
-                    thumb=thumb_file  # ✅ InputFile هنا
-                )
-                
-                media_list.append(InputSingleMedia(
-                    media=input_video,
-                    message='',
-                    entities=None
-                ))
-                print(" ✅")
-                
-                # ✅ إرسال الألبوم مع timeout
-                print("إرسال الألبوم...", end='', flush=True)
-                try:
-                    await asyncio.wait_for(
-                        client(SendMultiMediaRequest(
-                            peer=peer,
-                            multi_media=media_list
-                        )),
-                        timeout=300  # 5 دقائق timeout
+                # 1. الصورة
+                media_group.append(
+                    InputMediaPhoto(
+                        media=img_path,
+                        caption=caption
                     )
-                    print(" ✅ تم الرفع!")
-                except asyncio.TimeoutError:
-                    print(" ❌ timeout!")
-                    raise Exception("انتهى الوقت أثناء إرسال الألبوم")
+                )
                 
+                # 2. الفيديو مع thumbnail
+                video_kwargs = {
+                    'media': vid_path,
+                    'supports_streaming': True
+                }
+                
+                # إضافة thumbnail لو موجود
+                if vinfo['thumb'] and os.path.exists(vinfo['thumb']):
+                    video_kwargs['thumb'] = vinfo['thumb']
+                
+                media_group.append(InputMediaVideo(**video_kwargs))
+                
+                print("إرسال الألبوم...", end='', flush=True)
+                
+                # ✅ إرسال الـ album
+                await app.send_media_group(
+                    chat_id=chat_id,
+                    media=media_group
+                )
+                
+                print(" ✅ تم الرفع!")
                 print("\n🎉 Album: صورة فوق + فيديو تحت في نفس البوست")
             
             else:  # series
@@ -356,60 +285,34 @@ async def main():
                 if not media_files:
                     raise Exception("فشل تحميل جميع الملفات")
                 
+                chat_id = resolve_channel_id(channel)
                 print(f"\n📤 جاري رفع {len(media_files)} حلقات...")
-                entity = await resolve_channel(client, channel)
-                peer = get_input_peer(entity)
                 
-                media_list = []
+                # إعداد media group للمسلسل
+                media_group = []
                 
                 for i, m in enumerate(media_files):
-                    print(f"رفع الحلقة {i+1}...", end='', flush=True)
-                    vid_file = await client.upload_file(m['file'])
+                    video_kwargs = {
+                        'media': m['file'],
+                        'supports_streaming': True,
+                        'caption': caption if i == 0 else None
+                    }
                     
-                    thumb = None
                     if m['info']['thumb'] and os.path.exists(m['info']['thumb']):
-                        thumb = await client.upload_file(m['info']['thumb'])
+                        video_kwargs['thumb'] = m['info']['thumb']
                     
-                    vid_attributes = [
-                        DocumentAttributeVideo(
-                            duration=m['info']['duration'],
-                            w=m['info']['width'],
-                            h=m['info']['height'],
-                            supports_streaming=True
-                        ),
-                        DocumentAttributeFilename(file_name=f"{m['name']}.mp4")
-                    ]
-                    
-                    input_video = InputMediaUploadedDocument(
-                        file=vid_file,
-                        mime_type='video/mp4',
-                        attributes=vid_attributes,
-                        thumb=thumb
-                    )
-                    
-                    media_list.append(InputSingleMedia(
-                        media=input_video,
-                        message=caption if i == 0 else '',
-                        entities=None
-                    ))
-                    print(" ✅")
+                    media_group.append(InputMediaVideo(**video_kwargs))
                 
                 print("إرسال الألبوم...", end='', flush=True)
-                await asyncio.wait_for(
-                    client(SendMultiMediaRequest(
-                        peer=peer,
-                        multi_media=media_list
-                    )),
-                    timeout=300
+                await app.send_media_group(
+                    chat_id=chat_id,
+                    media=media_group
                 )
                 print(" ✅")
             
             print("\n" + "="*70)
             print("✅ تم بنجاح!")
             print("="*70)
-            
-        finally:
-            await client.disconnect()
 
 if __name__ == "__main__":
     try:
